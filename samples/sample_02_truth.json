@@ -1,0 +1,146 @@
+{
+  "wells": {
+    "A1": "growth",
+    "B1": "growth",
+    "C1": "growth",
+    "D1": "growth",
+    "E1": "growth",
+    "F1": "growth",
+    "G1": "growth",
+    "H1": "no_growth",
+    "A2": "growth",
+    "B2": "growth",
+    "C2": "no_growth",
+    "D2": "no_growth",
+    "E2": "no_growth",
+    "F2": "no_growth",
+    "G2": "no_growth",
+    "H2": "no_growth",
+    "A3": "no_growth",
+    "B3": "no_growth",
+    "C3": "no_growth",
+    "D3": "no_growth",
+    "E3": "no_growth",
+    "F3": "no_growth",
+    "G3": "no_growth",
+    "H3": "no_growth",
+    "A4": "no_growth",
+    "B4": "no_growth",
+    "C4": "no_growth",
+    "D4": "no_growth",
+    "E4": "no_growth",
+    "F4": "no_growth",
+    "G4": "no_growth",
+    "H4": "no_growth",
+    "A5": "growth",
+    "B5": "growth",
+    "C5": "no_growth",
+    "D5": "no_growth",
+    "E5": "no_growth",
+    "F5": "no_growth",
+    "G5": "no_growth",
+    "H5": "no_growth",
+    "A6": "growth",
+    "B6": "growth",
+    "C6": "growth",
+    "D6": "no_growth",
+    "E6": "no_growth",
+    "F6": "no_growth",
+    "G6": "no_growth",
+    "H6": "no_growth",
+    "A7": "growth",
+    "B7": "growth",
+    "C7": "growth",
+    "D7": "growth",
+    "E7": "growth",
+    "F7": "growth",
+    "G7": "growth",
+    "H7": "no_growth",
+    "A8": "growth",
+    "B8": "growth",
+    "C8": "growth",
+    "D8": "growth",
+    "E8": "no_growth",
+    "F8": "no_growth",
+    "G8": "no_growth",
+    "H8": "no_growth",
+    "A9": "no_growth",
+    "B9": "no_growth",
+    "C9": "no_growth",
+    "D9": "no_growth",
+    "E9": "no_growth",
+    "F9": "no_growth",
+    "G9": "no_growth",
+    "H9": "no_growth",
+    "A10": "growth",
+    "B10": "growth",
+    "C10": "growth",
+    "D10": "no_growth",
+    "E10": "no_growth",
+    "F10": "no_growth",
+    "G10": "no_growth",
+    "H10": "no_growth",
+    "H12": "growth",
+    "H11": "no_growth",
+    "A11": "unused",
+    "B11": "unused",
+    "C11": "unused",
+    "D11": "unused",
+    "E11": "unused",
+    "F11": "unused",
+    "G11": "unused",
+    "A12": "unused",
+    "B12": "unused",
+    "C12": "unused",
+    "D12": "unused",
+    "E12": "unused",
+    "F12": "unused",
+    "G12": "unused"
+  },
+  "mic": {
+    "1": {
+      "display": "0.5",
+      "row": 7
+    },
+    "2": {
+      "display": "8",
+      "row": 2
+    },
+    "3": {
+      "display": "≤0.06",
+      "row": 0
+    },
+    "4": {
+      "display": "≤0.125",
+      "row": 0
+    },
+    "5": {
+      "display": "4",
+      "row": 2
+    },
+    "6": {
+      "display": "16",
+      "row": 3
+    },
+    "7": {
+      "display": "0.25",
+      "row": 7
+    },
+    "8": {
+      "display": "2",
+      "row": 4
+    },
+    "9": {
+      "display": "≤0.125",
+      "row": 0
+    },
+    "10": {
+      "display": "2",
+      "row": 3
+    }
+  },
+  "controls": {
+    "H12": "growth",
+    "H11": "no_growth"
+  }
+}

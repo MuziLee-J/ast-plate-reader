@@ -1,0 +1,27 @@
+{
+  "panel_type": "microdilution_96",
+  "name": "演示-革兰阴性菌药敏板",
+  "plate_mm": [127.76, 85.48],
+  "well_diameter_mm": 6.9,
+  "grid": { "rows": 8, "cols": 12, "pitch_mm": 9.0, "origin_mm": [14.38, 11.24] },
+  "detection": {
+    "mode": "color",
+    "indicator": "resazurin",
+    "positive_control": "H12",
+    "negative_control": "H11"
+  },
+  "drugs": {
+    "1":  { "code": "AK",  "name": "阿米卡星",           "conc": [64, 32, 16, 8, 4, 2, 1, 0.5] },
+    "2":  { "code": "CAZ", "name": "头孢他啶",           "conc": [32, 16, 8, 4, 2, 1, 0.5, 0.25] },
+    "3":  { "code": "CIP", "name": "环丙沙星",           "conc": [8, 4, 2, 1, 0.5, 0.25, 0.125, 0.06] },
+    "4":  { "code": "IPM", "name": "亚胺培南",           "conc": [16, 8, 4, 2, 1, 0.5, 0.25, 0.125] },
+    "5":  { "code": "MEM", "name": "美罗培南",           "conc": [16, 8, 4, 2, 1, 0.5, 0.25, 0.125] },
+    "6":  { "code": "TZP", "name": "哌拉西林/他唑巴坦",  "conc": [128, 64, 32, 16, 8, 4, 2, 1] },
+    "7":  { "code": "FEP", "name": "头孢吡肟",           "conc": [32, 16, 8, 4, 2, 1, 0.5, 0.25] },
+    "8":  { "code": "GEN", "name": "庆大霉素",           "conc": [32, 16, 8, 4, 2, 1, 0.5, 0.25] },
+    "9":  { "code": "LVX", "name": "左氧氟沙星",         "conc": [16, 8, 4, 2, 1, 0.5, 0.25, 0.125] },
+    "10": { "code": "COL", "name": "多黏菌素",           "conc": [16, 8, 4, 2, 1, 0.5, 0.25, 0.125] }
+  },
+  "unused_cols": [11, 12],
+  "units": "µg/mL"
+}
