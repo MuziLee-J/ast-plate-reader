@@ -36,7 +36,9 @@ uv run --with opencv-python --with numpy --with openpyxl --with pillow python ve
 uv run --with fastapi --with uvicorn --with opencv-python --with numpy --with openpyxl --with pillow --with python-multipart python app.py
 ```
 
-浏览器打开 http://127.0.0.1:8765 ，可以点示例照片或上传自己的照片（手机上会直接调起相机）。
+浏览器打开 http://127.0.0.1:8765 ，上传自己的照片（手机上会直接调起相机）。
+
+Windows 上也可以直接双击启动脚本：`启动判读系统.bat`（仅本机访问）或 `启动判读系统-局域网.bat`（开放给内网，手机/其它电脑用窗口里显示的 IP 地址访问；首次运行如弹防火墙提示，勾选「专用网络」并允许）。
 
 ## 用真实照片测
 
@@ -44,7 +46,7 @@ uv run --with fastapi --with uvicorn --with opencv-python --with numpy --with op
 2. 拍摄建议：板子水平、占画面主体、光线均匀、背景与板子反差明显
 3. 判读结果仅供参考，务必人工复核（黄色标注的孔和「跳跃孔」警告尤其要看）
 
-> 仓库不含真实药敏板照片（临床信息敏感）。页面上的示例按钮 ①-⑨ 对应 `samples/real_01.jpg … real_10.jpg`，把您自己的照片按这个命名放进 `samples/` 目录即可使用；`samples/sample_01~03.jpg` 是软件生成的合成演示图，随仓库提供。
+> 仓库不含真实药敏板照片（临床信息敏感）。本机 `samples/real_XX.jpg` 仅用于命令行与接口测试（页面已不内置示例按钮）；`samples/sample_01~03.jpg` 是软件生成的合成测试图，随仓库提供。
 
 ## 自定义板型
 
@@ -116,6 +118,7 @@ uv run --with fastapi --with uvicorn --with opencv-python --with numpy --with op
   - 念珠菌属：粉红/红色＝阳性（生长），蓝色或紫色＝阴性（抑制）；两性霉素B 的紫色/粉色/红色均按阳性。
   - 曲霉属：康唑类（FLU/ISA/VRC/POS/ITR）紫色或粉色＝阳性；其余同念珠菌属。
 - 「板面」区自带上传按钮，也可把照片**拖入**；上传后**原图与逐孔板面并排显示**，方便对照复核。
+- **照片本身可点击复核**：直接点标注照片上的孔位（悬停高亮）即可切换状态；「查看原图」可在新标签页打开未标注的原始照片。
 - **逐孔板面可点击**：点击任意孔位循环切换 生长→抑制→临界，**MIC 值与质控会自动重算**；也可在 MIC 表中用下拉框直接修改，勾选「已人工复核」后导出。
 - 每次判读会记入「本次会话记录」列表，点击可重新查看。
 - **板面与判读条件可上传/下载**：下载当前模板 JSON → 修改药物/浓度/对照孔/genus_rules 颜色规则 → 上传即生效。
@@ -140,9 +143,21 @@ uv run --with fastapi --with uvicorn --with opencv-python --with numpy --with op
 
 **B板**：上排 伏立康唑/氟康唑/氟胞嘧啶，下排同布局（代码带 `-2` 后缀，如 VRC-2 下排）；**上下半区有时接种两个菌株**（同一块板做两块实验）——此时填「下半区菌号」，导出 Excel 时下排药物自动标注下半区菌号。阳性对照 C12、G12；D、H 行为空孔，自动忽略。
 
-**使用**：网页示例按钮 ⑦（干板B）、⑧⑨（干板A）；或把模板下拉切到对应干板后上传照片。
+**使用**：把模板下拉切到对应干板（A板/B板）后上传照片。
 
 命令行：`uv run --with opencv-python --with numpy --with openpyxl --with pillow python judge_plates.py templates/dryplate_a.json <照片...>`
+
+## 颜色分级与判读模型标定（显色法）
+
+指示剂颜色随生长推进：**蓝（无生长）→ 紫（临界）→ 粉红（生长）→ 粉白（生长）→ 白（生长）**。
+
+- 软件对每个孔记录 色相H / 饱和度S / 明度V 与颜色分级；**逐孔板面里的小圆点显示该孔颜色**（鼠标悬停可看颜色名称）。
+- 阈值写在模板 `detection.color_thresholds`（`white_max_s` / `pink_min_s` / `purple_h` / `blue_h`），`detection.color_rules` 定义每种颜色对应的判读状态，可按实验室习惯调整。
+- **用人工复核数据训练/标定颜色模型**：
+  1. 网页上完成复核（点照片孔位或逐孔板面切换），点「导出复核数据（训练用 CSV）」；
+  2. 运行 `uv run python fit_color_model.py 复核数据_训练用.csv templates/chromogenic_plate.json`；
+  3. 得到 `learned_color_thresholds.json`，把 `detection.color_thresholds` 粘进模板后用页面「上传模板」立即生效。
+- 这是"阈值标定"式的轻量学习：可解释、需要数据少；等复核数据积累多了（几百孔以上）再考虑统计/深度模型。
 
 ## 不会写 JSON 怎么办？
 

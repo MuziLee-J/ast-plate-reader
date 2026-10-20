@@ -161,6 +161,39 @@ class PlateAnalyzer:
                 refined[pos] = (cx, cy)
         return refined
 
+    # ---------- 颜色分级（蓝→紫→粉→粉白→白） ----------
+    COLOR_LABELS = {"blue": "蓝色（无生长）", "purple": "紫色（临界）",
+                    "pink": "粉红（生长）", "pink_white": "粉白（生长）",
+                    "white": "白色（生长）"}
+
+    def _color_class(self, h, s):
+        """按指示剂颜色分级：蓝 → 紫 → 粉 → 粉白 → 白（随生长推进）。
+        阈值可由模板 detection.color_thresholds 覆盖（可用复核数据拟合后写入）。"""
+        th = (self.t.get("detection") or {}).get("color_thresholds") or {}
+        white_s = float(th.get("white_max_s", 30))
+        pink_s = float(th.get("pink_min_s", 65))
+        purple_lo, purple_hi = th.get("purple_h", [128, 150])
+        blue_lo, blue_hi = th.get("blue_h", [95, 128])
+        if s <= white_s:
+            return "white"
+        if h >= 150 or h <= 15:
+            return "pink" if s > pink_s else "pink_white"
+        if purple_lo < h <= purple_hi:
+            return "purple"
+        if blue_lo <= h <= blue_hi:
+            return "blue"
+        return "purple" if s > pink_s else "pink_white"
+
+    def _color_status(self, color):
+        rules = (self.t.get("detection") or {}).get("color_rules") or {}
+        default = {"blue": "no_growth", "purple": "partial",
+                   "pink": "growth", "pink_white": "growth", "white": "growth"}
+        return (rules.get(color) or {}).get("status") or default.get(color, "partial")
+
+    def _color_label(self, color):
+        rules = (self.t.get("detection") or {}).get("color_rules") or {}
+        return (rules.get(color) or {}).get("label") or self.COLOR_LABELS.get(color, color)
+
     # ---------- 2b. 孔位网格自动校准 ----------
     def _fit_axis(self, prof, size):
         """单轴拟合：自相关求孔距 → 相位扫描选取整排孔位。"""
@@ -585,8 +618,10 @@ class PlateAnalyzer:
             return wells
 
         if self.new_style:
-            # 行式板型（显色法等板型）：颜色三分类，规则由模板给出
+            # 行式板型（显色法等板型）：五色分级（蓝→紫→粉→粉白→白），规则由模板给出
             wells = {}
+            color_conf = {"blue": 0.8, "purple": 0.5, "pink": 0.8,
+                          "pink_white": 0.7, "white": 0.68}
             for pos in centers:
                 role, code, _, conc = self._well_meta(pos)
                 rec = {"pos": pos, "role": role}
@@ -601,18 +636,13 @@ class PlateAnalyzer:
                 if stat is None:
                     rec.update(status="unknown", growth=None, score=None, confidence=0.0)
                 else:
-                    h, s = float(stat[0]), float(stat[1])
-                    if (h >= 150 or h <= 15) and s > 55:         # 粉红/红色：生长
-                        cls = "growth"
-                        margin = (h - 150) if h >= 150 else (15 - h)
-                        conf = min(0.95, 0.55 + margin * 0.02)
-                    elif h <= 138 and s > 40:                    # 蓝：无生长
-                        cls = "no_growth"
-                        conf = min(0.95, 0.55 + (138 - h) * 0.02)
-                    else:                                        # 紫/临界：按模板规则判定
-                        cls, conf = "partial", 0.35
-                    rec.update(status=cls, growth=(cls == "growth"),
-                               score=None, confidence=round(float(conf), 2))
+                    h, s, v = float(stat[0]), float(stat[1]), float(stat[2])
+                    color = self._color_class(h, s)
+                    cls = self._color_status(color)
+                    rec.update(status=cls, growth=(cls == "growth"), score=None,
+                               color=color, color_label=self._color_label(color),
+                               hsv=[round(h, 1), round(s, 1), round(v, 1)],
+                               confidence=round(float(color_conf.get(color, 0.5)), 2))
                 wells[pos] = rec
             return wells
 
@@ -851,9 +881,11 @@ class PlateAnalyzer:
             bbox = [c[0] - r, c[1] - r, c[0] + r, c[1] + r]
             st = w_.get("status")
             if st == "growth":
-                d.ellipse(bbox, fill=(255, 110, 150, 70), outline=(255, 60, 110, 220), width=3)
+                d.ellipse(bbox, outline=(255, 60, 110, 235), width=4)
             elif st == "no_growth":
-                d.ellipse(bbox, fill=(80, 140, 255, 70), outline=(40, 100, 230, 220), width=3)
+                d.ellipse(bbox, outline=(40, 100, 230, 235), width=4)
+            elif st == "partial":
+                d.ellipse(bbox, outline=(150, 90, 200, 235), width=4)
             elif st == "unknown":
                 d.ellipse(bbox, outline=(150, 150, 150, 200), width=3)
             else:
@@ -945,10 +977,16 @@ class PlateAnalyzer:
 
         well_list = sorted(wells.values(),
                            key=lambda r: (int(r["pos"][1:]), r["pos"][0]))
+        for r in well_list:
+            gx, gy = back(centers[r["pos"]])
+            r["xy"] = [round(gx, 1), round(gy, 1)]     # 原图像素坐标（网页板面点击热区）
         return {
             "sample": {"file": os.path.basename(img_path), "sample_no": sample_no,
                        "template": self.t["name"], "date": datetime.date.today().isoformat(),
                        "blur_score": round(blur_score, 1),
+                       "size": [int(img.shape[1]), int(img.shape[0])],
+                       "well_r_orig": round(self.well_r_px * (
+                           img.shape[1] / warped.shape[1] + img.shape[0] / warped.shape[0]) / 2, 1),
                        "plate_detected": True, "grid_source": grid_source},
             "warnings": self.warnings,
             "controls": controls,

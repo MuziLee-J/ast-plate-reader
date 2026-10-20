@@ -3,3 +3,4 @@ __pycache__/
 outputs/
 samples/real_*.jpg
 *.log
+learned_color_thresholds.json

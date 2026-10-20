@@ -129,6 +129,12 @@ HTML_PAGE = """<!doctype html>
   select{padding:9px;border:1px solid #ddd;border-radius:8px;background:#fff;font-size:14px;box-sizing:border-box}
   .cond{background:#f8fafc;border-left:3px solid #2f6fed;padding:8px 10px;border-radius:4px;font-size:12px;color:#445;margin-top:8px}
   #gridArea{max-height:none}
+  .imgwrap{position:relative;display:block;width:100%}
+  .imgwrap img{display:block;width:100%;border-radius:8px}
+  svg.hot{position:absolute;left:0;top:0;width:100%;height:100%}
+  svg.hot circle{fill:rgba(255,255,255,0.01);stroke:transparent;stroke-width:2;cursor:pointer;pointer-events:all}
+  svg.hot circle:hover{stroke:#2f6fed;stroke-width:3;fill:rgba(47,111,237,.14)}
+  .cd{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:3px;border:1px solid rgba(0,0,0,.18);vertical-align:middle}
 </style>
 </head>
 <body>
@@ -143,25 +149,7 @@ HTML_PAGE = """<!doctype html>
       <input type="file" id="templateFile" accept=".json,application/json" style="display:none" onchange="uploadTemplate(this)">
     </label>
   </div>
-  <div class="hint" style="margin-top:4px">（合成示例用"演示模板"；真实显色法板选「真菌药敏板（显色法）」，干板选对应 A板/B板；板面与判读条件可通过模板 JSON 修改后上传）</div>
-  <div style="margin-top:8px">
-    <span class="hint">合成示例：</span>
-    <button class="btn ghost" onclick="loadSample('sample_01.jpg','demo')">示例 1</button>
-    <button class="btn ghost" onclick="loadSample('sample_02.jpg','demo')">示例 2</button>
-    <button class="btn ghost" onclick="loadSample('sample_03.jpg','demo')">示例 3</button>
-  </div>
-  <div style="margin-top:4px">
-    <span class="hint">真实照片(6258)：</span>
-    <button class="btn ghost" onclick="loadSample('real_01.jpg','chromogenic_plate')">①</button>
-    <button class="btn ghost" onclick="loadSample('real_02.jpg','chromogenic_plate')">②</button>
-    <button class="btn ghost" onclick="loadSample('real_03.jpg','chromogenic_plate')">③</button>
-    <button class="btn ghost" onclick="loadSample('real_04.jpg','chromogenic_plate')">④</button>
-    <button class="btn ghost" onclick="loadSample('real_05.jpg','chromogenic_plate')">⑤</button>
-    <button class="btn ghost" onclick="loadSample('real_06.jpg','chromogenic_plate')">⑥</button>
-    <button class="btn ghost" onclick="loadSample('real_07.jpg','dryplate_b')">⑦ 干板B</button>
-    <button class="btn ghost" onclick="loadSample('real_08.jpg','dryplate_a')">⑧ 干板A</button>
-    <button class="btn ghost" onclick="loadSample('real_09.jpg','dryplate_a')">⑨ 干板A</button>
-  </div>
+  <div class="hint" style="margin-top:4px">（真实显色法板选「真菌药敏板（显色法）」，干板选对应 A板/B板；板面与判读条件可通过模板 JSON 修改后上传）</div>
   <div style="margin-top:10px">
     <label class="btn">上传药敏板照片（可多选 · 同一菌株）
       <input type="file" id="file" accept="image/*" multiple capture="environment" style="display:none" onchange="onPick(this)">
@@ -199,8 +187,8 @@ HTML_PAGE = """<!doctype html>
   <div id="boardView" style="display:none">
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:14px;align-items:start">
       <div>
-        <img id="boardImg" alt="板面（原图 + 孔位标注）">
-        <div class="hint" style="margin-top:6px">原图 + 孔位标注（绿圈 = MIC 判定孔；对照孔带 阳/阴 标注）</div>
+        <div class="imgwrap"><img id="boardImg" alt="板面（原图 + 孔位标注）"><svg id="boardHot" class="hot"></svg></div>
+        <div class="hint" style="margin-top:6px">原图 + 孔位标注（绿圈 = MIC 判定孔）；<b>直接点击照片上的孔位可复核修改 MIC</b>　<a id="origLink" href="#" target="_blank" style="color:#2f6fed">查看原图 ↗</a></div>
       </div>
       <div>
         <div class="hint" id="gridHint" style="margin-bottom:4px"></div>
@@ -217,6 +205,7 @@ HTML_PAGE = """<!doctype html>
     <h3>MIC 汇总 <span class="hint">（人工复核：下拉选择最终 MIC 值）</span></h3>
     <table><thead><tr><th>药物</th><th>名称</th><th>软件判读</th><th>人工复核</th><th>质控范围</th><th>备注</th></tr></thead><tbody id="micRows"></tbody></table>
     <div style="margin-top:12px"><button class="btn green" onclick="downloadExcel()">导出 Excel（报告+登记表）</button>
+      <button class="btn ghost" onclick="downloadReviewData()">导出复核数据（训练用 CSV）</button>
       <label style="margin-left:12px;font-size:14px"><input type="checkbox" class="revchk" id="reviewedChk"> 已人工复核</label>
     </div>
   </div>
@@ -228,7 +217,9 @@ HTML_PAGE = """<!doctype html>
     <table><thead><tr><th>药物</th><th>名称</th><th>MIC (µg/mL)</th><th>置信度</th><th>来源照片</th><th>备注</th></tr></thead><tbody id="mergedRows"></tbody></table>
     <h3>各照片明细</h3>
     <div id="plateList"></div>
-    <div style="margin-top:12px"><button class="btn green" onclick="downloadExcel()">导出 Excel（登记表 · 每张照片分别记录）</button></div>
+    <div style="margin-top:12px"><button class="btn green" onclick="downloadExcel()">导出 Excel（登记表 · 每张照片分别记录）</button>
+      <button class="btn ghost" onclick="downloadReviewData()">导出复核数据（训练用 CSV）</button>
+    </div>
   </div>
 </div>
 <div class="card" id="sessionCard">
@@ -331,6 +322,7 @@ function wellTop(w){
   return '';
 }
 function wellStTxt(s){return s==='growth'?'生长':(s==='no_growth'?'抑制':(s==='partial'?'临界':(s==='unknown'?'?':'')))}
+const CDOT={blue:'#4a7fd4',purple:'#8e6fc4',pink:'#e56a94',pink_white:'#f0b6cc',white:'#e8e8e8'};
 function buildGridHtml(wmap,micPos,idx){
   let html='<tr><th></th>'; for(let j=1;j<=12;j++)html+='<th>'+j+'</th>'; html+='</tr>';
   const ia=(idx!==undefined&&idx!==null)?' data-idx="'+idx+'"':'';
@@ -342,12 +334,29 @@ function buildGridHtml(wmap,micPos,idx){
       let cls=w.status==='growth'?'g':(w.status==='no_growth'?'n':(w.status==='partial'?'p':(w.status==='unused'?'u':'k')));
       if(micPos[pos])cls+=' mic';
       if(w.role==='positive_control'||w.role==='negative_control')cls+=' ctrl';
-      const tip=pos+(w.drug?' '+w.drug+' '+(w.conc??''):'');
-      html+='<td data-pos="'+pos+'"'+ia+' class="'+cls+'" title="'+tip+'"><div>'+wellTop(w)+'</div><div style="font-weight:700">'+wellStTxt(w.status)+'</div></td>';
+      const tip=pos+(w.drug?' '+w.drug+' '+(w.conc??''):'')+(w.color_label?' · '+w.color_label:'');
+      const dot=w.color?'<span class="cd" style="background:'+(CDOT[w.color]||'#ccc')+'"></span>':'';
+      html+='<td data-pos="'+pos+'"'+ia+' class="'+cls+'" title="'+tip+'"><div>'+wellTop(w)+'</div><div style="font-weight:700">'+dot+wellStTxt(w.status)+'</div></td>';
     }
     html+='</tr>';
   }
   return html;
+}
+function buildHotspots(wmap,size,shapeR){
+  const ws=Object.values(wmap||{}).filter(w=>w&&w.xy);
+  if(!ws.length||!size)return '';
+  const r=shapeR||Math.max(12,(size[0]||1200)/12*0.45);
+  return ws.map(w=>'<circle cx="'+w.xy[0]+'" cy="'+w.xy[1]+'" r="'+r+'" data-pos="'+w.pos+'"></circle>').join('');
+}
+function setHotspot(svgEl,wmap,size,shapeR,clickFn){
+  if(!svgEl){return;}
+  if(!size){svgEl.innerHTML='';return;}
+  svgEl.setAttribute('viewBox','0 0 '+size[0]+' '+size[1]);
+  svgEl.setAttribute('preserveAspectRatio','none');
+  svgEl.innerHTML=buildHotspots(wmap,size,shapeR);
+  svgEl.querySelectorAll('circle').forEach(c=>{
+    c.addEventListener('click',()=>clickFn(c.dataset.pos));
+  });
 }
 function refreshGrid(){if(!curWells)return;$('grid').innerHTML=buildGridHtml(curWells,micPosOf(curMic||[]));bindWellClicks();}
 function bindWellClicks(){
@@ -411,6 +420,8 @@ function render(data){
   $('boardView').style.display='block';
   $('boardCap').textContent='板面：原图 + 96 孔位标注'+(res.sample.time_point?(' · '+res.sample.time_point):'')+(res.sample.culture_info?(' · '+res.sample.culture_info):'');
   $('boardImg').src='data:image/png;base64,'+data.image_b64;
+  setHotspot($('boardHot'),curMeta.interactive?curWells:null,res.sample.size,res.sample.well_r_orig,wellClick);
+  $('origLink').href='/api/orig/'+recordId+'/0';
 }
 function mergedRowsHtml(merged){
   return merged.map(m=>
@@ -501,6 +512,13 @@ function renderBatch(data){
   $('boardCap').textContent='板面：第 1 张照片（'+b.plates[0].sample.file+'）；各照片逐张展示在下方明细中';
   $('boardImg').src='data:image/jpeg;base64,'+b.plates[0].image_b64;
   if(interactive){
+    setHotspot($('boardHot'),curBatch.plates[0].wmap,b.plates[0].sample.size,
+               b.plates[0].sample.well_r_orig,pos=>batchWellClick(0,pos));
+  }else{
+    setHotspot($('boardHot'),null,null,null,null);
+  }
+  $('origLink').href='/api/orig/'+recordId+'/0';
+  if(interactive){
     $('grid').innerHTML=batchGridHtml(0);
     $('gridHint').textContent='逐孔板面（第 1 张照片）：点击任意孔位循环切换 生长→抑制→临界，该照片 MIC 与下方合并结果自动重算';
   }else{
@@ -515,11 +533,11 @@ function renderBatch(data){
     const ck=Object.entries(p.controls).map(([pos,v])=>pos+' '+v.role+'：'+(v.ok?'正常 ✓':'异常 ✗')).join('　');
     const warns=(p.warnings||[]).map(w=>'<div class="warn">⚠ '+w+'</div>').join('');
     const rows=micTableHtml(p.sample.file,p.mic);
-    let left='<img src="data:image/jpeg;base64,'+p.image_b64+'" alt="标注图" style="width:100%">';
+    let left='<div class="imgwrap"><img src="data:image/jpeg;base64,'+p.image_b64+'" alt="标注图"><svg class="hot" id="hot_'+i+'"></svg></div>'+
+             '<div class="hint" style="margin-top:4px">点击照片上的孔位即可复核；<a href="/api/orig/'+data.record_id+'/'+i+'" target="_blank" style="color:#2f6fed">查看原图 ↗</a></div>';
     if(interactive){
       const wmap={};(p.wells||[]).forEach(w=>{wmap[w.pos]=w;});
-      left+='<div class="hint" style="margin-top:6px">逐孔板面：点击孔位切换 生长→抑制→临界，MIC 自动重算</div>'+
-            '<div class="gridwrap"><table class="grid" id="grid_'+i+'">'+buildGridHtml(wmap,micPosOf(p.mic),i)+'</table></div>';
+      left+='<div class="gridwrap" style="margin-top:6px"><table class="grid" id="grid_'+i+'">'+buildGridHtml(wmap,micPosOf(p.mic),i)+'</table></div>';
     }
     return '<details '+(i===0?'open':'')+' class="plate"><summary>照片 '+(i+1)+'：'+p.sample.file+
       ((p.warnings&&p.warnings.length)?'<span class="badge">'+p.warnings.length+' 条警告</span>':'<span class="badge">无警告</span>')+
@@ -531,6 +549,12 @@ function renderBatch(data){
       '<table><thead><tr><th>药物</th><th>名称</th><th>软件判读</th><th>人工复核</th><th>质控</th><th>备注</th></tr></thead><tbody id="micTb_'+i+'">'+rows+'</tbody></table></div>'+
       '</div></details>';
   }).join('');
+  if(interactive){
+    b.plates.forEach((p,i)=>{
+      setHotspot(document.getElementById('hot_'+i),curBatch.plates[i].wmap,
+                 p.sample.size,p.sample.well_r_orig,pos=>batchWellClick(i,pos));
+    });
+  }
 }
 function pushSession(rec){sessionRecords.unshift(rec);renderSession();}
 function renderSession(){
@@ -576,6 +600,28 @@ function updateRuleBox(){
 }
 $('genusSel').onchange=updateRuleBox;
 $('templateSel').onchange=updateRuleBox;
+async function downloadReviewData(){
+  if(!recordId)return;
+  let items=[];
+  if(curBatch&&curBatch.plates&&curBatch.plates.length){
+    items=curBatch.plates.map(p=>{
+      const st={};Object.entries(p.wmap).forEach(([pos,w])=>st[pos]=w.status);
+      return {file:p.file,states:st};
+    });
+  }else if(curWells){
+    const st={};Object.entries(curWells).forEach(([pos,w])=>st[pos]=w.status);
+    items=[{file:(curMeta&&curMeta.file)||'',states:st}];
+  }
+  if(!items.length)return;
+  const fd=new FormData();
+  fd.append('record_id',recordId);
+  fd.append('wells',JSON.stringify(items));
+  const r=await fetch('/api/review_data',{method:'POST',body:fd});
+  if(!r.ok){alert('导出复核数据失败');return;}
+  const b=await r.blob();
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(b);a.download='复核数据_训练用.csv';a.click();
+}
 async function downloadExcel(){
   if(!recordId)return;
   const reviews={},reviewed={};
@@ -684,12 +730,14 @@ async def analyze(file: UploadFile = File(...), sample_no: str = Form(""),
                   time_point: str = Form(""), genus: str = Form("candida"),
                   species: str = Form(""), batch_no: str = Form(""),
                   operator: str = Form(""), strain2: str = Form("")):
-    tmp = os.path.join(OUT_DIR, f"upload_{uuid.uuid4().hex}.jpg")
+    rid = uuid.uuid4().hex
+    orig = os.path.join(OUT_DIR, f"orig_{rid}.jpg")
     try:
-        with open(tmp, "wb") as f:
+        with open(orig, "wb") as f:
             f.write(await file.read())
         analyzer = PlateAnalyzer(get_template(template_id))
-        result = analyzer.run(tmp, outdir=OUT_DIR, sample_no=sample_no.strip(), genus=genus)
+        result = analyzer.run(orig, outdir=OUT_DIR, sample_no=sample_no.strip(), genus=genus)
+        result["orig"] = orig
         s = result["sample"]
         s["file"] = file.filename or s["file"]
         s["culture_info"] = culture_info.strip()
@@ -702,17 +750,15 @@ async def analyze(file: UploadFile = File(...), sample_no: str = Form(""),
         rset = enrich_qc([result], sample_no.strip())
         with open(result["annotated"], "rb") as f:
             img_b64 = base64.b64encode(f.read()).decode()
-        rid = uuid.uuid4().hex
         STORE[rid] = {"plates": [result], "template_id": template_id,
                       "meta": build_meta(sample_no, culture_info, genus, species,
                                          batch_no, operator, strain2),
                       "qc": rset}
         return {"ok": True, "result": result, "image_b64": img_b64, "record_id": rid}
     except Exception as e:
+        if os.path.exists(orig):
+            os.remove(orig)
         return {"ok": False, "error": f"{type(e).__name__}: {e}"}
-    finally:
-        if os.path.exists(tmp):
-            os.remove(tmp)
 
 
 @app.post("/api/analyze_batch")
@@ -722,14 +768,16 @@ async def analyze_batch(files: list[UploadFile] = File(...), sample_no: str = Fo
                         species: str = Form(""), batch_no: str = Form(""),
                         operator: str = Form(""), strain2: str = Form("")):
     """同一菌株的多张照片：逐张判读，分别记录。"""
+    rid = uuid.uuid4().hex
     plate_results, errors = [], []
     for f in files:
-        tmp = os.path.join(OUT_DIR, f"upload_{uuid.uuid4().hex}.jpg")
+        orig = os.path.join(OUT_DIR, f"orig_{rid}_{len(plate_results)}.jpg")
         try:
-            with open(tmp, "wb") as fp:
+            with open(orig, "wb") as fp:
                 fp.write(await f.read())
             analyzer = PlateAnalyzer(get_template(template_id))
-            res = analyzer.run(tmp, outdir=OUT_DIR, sample_no=sample_no.strip(), genus=genus)
+            res = analyzer.run(orig, outdir=OUT_DIR, sample_no=sample_no.strip(), genus=genus)
+            res["orig"] = orig
             s = res["sample"]
             s["file"] = f.filename or s["file"]
             s["culture_info"] = culture_info.strip()
@@ -742,18 +790,16 @@ async def analyze_batch(files: list[UploadFile] = File(...), sample_no: str = Fo
             res["image_b64"] = preview_b64(res["annotated"])
             plate_results.append(res)
         except Exception as e:
+            if os.path.exists(orig):
+                os.remove(orig)
             errors.append({"file": f.filename or "未命名",
                            "error": f"{type(e).__name__}: {e}"})
-        finally:
-            if os.path.exists(tmp):
-                os.remove(tmp)
 
     if not plate_results:
         msg = "；".join(f"{e['file']}: {e['error']}" for e in errors)
         return {"ok": False, "error": "全部照片判读失败：" + msg}
 
     rset = enrich_qc(plate_results, sample_no.strip())
-    rid = uuid.uuid4().hex
     store_plates = [{k: v for k, v in p.items() if k != "image_b64"}
                     for p in plate_results]
     STORE[rid] = {"plates": store_plates, "template_id": template_id,
@@ -847,6 +893,54 @@ async def recompute_batch(template_id: str = Form("demo"), genus: str = Form("ca
     return {"ok": True, "plates": out, "merged_mic": merge_mic(fake_plates)}
 
 
+@app.get("/api/orig/{rid}/{idx}")
+def get_original(rid: str, idx: int):
+    """查看原始照片（未标注）。"""
+    rec = STORE.get(rid)
+    if not rec or not (0 <= idx < len(rec.get("plates", []))):
+        return Response("not found", status_code=404)
+    p = rec["plates"][idx].get("orig")
+    if not p or not os.path.isfile(p):
+        return Response("not found", status_code=404)
+    return FileResponse(p, media_type="image/jpeg")
+
+
+@app.post("/api/review_data")
+async def review_data(record_id: str = Form(...), wells: str = Form("[]")):
+    """导出逐孔颜色特征 + 人工复核结果（训练/标定用 CSV）。"""
+    import csv
+    import io
+
+    rec = STORE.get(record_id)
+    if not rec:
+        return Response("记录不存在或已过期", status_code=404)
+    try:
+        items = json.loads(wells or "[]")
+    except Exception:
+        items = []
+    buf = io.StringIO()
+    wr = csv.writer(buf)
+    wr.writerow(["照片", "孔位", "角色", "药物", "浓度", "色相H", "饱和度S", "明度V",
+                 "颜色分级", "软件判读", "复核判读"])
+    role_cn = {"drug": "药物", "positive_control": "阳性对照",
+               "negative_control": "阴性对照", "unused": "未使用"}
+    for i, plate in enumerate(rec.get("plates", [])):
+        states = (items[i].get("states") if i < len(items) else {}) or {}
+        fname = plate.get("sample", {}).get("file", "")
+        for wl in plate.get("wells", []):
+            pos = wl.get("pos")
+            hsv = wl.get("hsv") or ["", "", ""]
+            wr.writerow([fname, pos, role_cn.get(wl.get("role"), wl.get("role")),
+                         wl.get("drug", ""), wl.get("conc", ""),
+                         hsv[0], hsv[1], hsv[2], wl.get("color_label", ""),
+                         wl.get("status", ""), states.get(pos) or wl.get("status", "")])
+    from urllib.parse import quote
+    fn = quote("复核数据_训练用.csv")
+    return Response("﻿" + buf.getvalue(), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition":
+                             f"attachment; filename=review_data.csv; filename*=UTF-8''{fn}"})
+
+
 @app.post("/api/export")
 async def export(record_id: str = Form(...), reviews: str = Form("{}"),
                  reviewed: str = Form("{}")):
@@ -889,4 +983,7 @@ async def export(record_id: str = Form(...), reviews: str = Form("{}"),
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8765)
+    # 默认只允许本机访问；启动（局域网）脚本会把 AST_HOST 设为 0.0.0.0 开放给内网
+    host = os.environ.get("AST_HOST", "127.0.0.1")
+    port = int(os.environ.get("AST_PORT", "8765"))
+    uvicorn.run(app, host=host, port=port)
