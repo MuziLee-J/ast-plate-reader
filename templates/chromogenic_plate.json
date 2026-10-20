@@ -8,8 +8,21 @@
   "grid": { "rows": 8, "cols": 12, "pitch_mm": 9.0, "origin_mm": [14.38, 11.24] },
   "detection": {
     "mode": "color",
-    "reading": "只读取颜色变化，不读取浊度（说明书）",
-    "purple_as_growth_for": ["AMB"]
+    "reading": "只读取颜色变化，不读取浊度；按指示剂五色分级：蓝（无生长）→紫（临界）→粉/粉白/白（生长）",
+    "purple_as_growth_for": ["AMB"],
+    "color_thresholds": {
+      "white_max_s": 30,
+      "pink_min_s": 65,
+      "purple_h": [128, 150],
+      "blue_h": [95, 128]
+    },
+    "color_rules": {
+      "blue": { "status": "no_growth", "label": "蓝色（无生长）" },
+      "purple": { "status": "partial", "label": "紫色（临界）" },
+      "pink": { "status": "growth", "label": "粉红（生长）" },
+      "pink_white": { "status": "growth", "label": "粉白（生长）" },
+      "white": { "status": "growth", "label": "白色（生长）" }
+    }
   },
   "controls": { "positive": "A12", "negative": "H12" },
   "genus_rules": {
