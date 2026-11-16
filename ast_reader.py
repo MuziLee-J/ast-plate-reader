@@ -33,6 +33,39 @@ except ImportError:
     HAS_PIL = False
 
 
+# MIC 显示规范
+# - 最低浓度（实际 0.0156 µg/mL）按报告习惯写作 0.016；
+# - 最高浓度孔仍生长时，报告下一档稀释度作为下限（8 → ≥16），不再用 ">8"。
+_MIC_DISPLAY = {"0.015": "0.016"}
+
+
+def _mic_num(x):
+    """数字转显示串：32.0 → "32"，0.03 → "0.03"。"""
+    s = ("%.6f" % float(x)).rstrip("0").rstrip(".")
+    return s or "0"
+
+
+def mic_label(value):
+    """单个浓度/MIC 值的显示串（0.015 → 0.016）。"""
+    return _MIC_DISPLAY.get(str(value).strip(), str(value).strip())
+
+
+def mic_upper_label(top):
+    """"高于最高浓度"的显示：以下一档稀释度为下限，如 8 → ≥16、8/4 → ≥16/8。"""
+    s = str(top).strip()
+    parts = [p.strip() for p in s.split("/")]
+    try:
+        nums = [float(p) for p in parts]
+    except Exception:
+        return "≥" + mic_label(s)
+    return "≥" + "/".join(_mic_num(v * 2) for v in nums)
+
+
+def mic_lower_label(bottom):
+    """"低于最低浓度"的显示：如 0.015 → ≤0.016。"""
+    return "≤" + mic_label(bottom)
+
+
 def load_template(path):
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
@@ -824,11 +857,11 @@ class PlateAnalyzer:
                       for i in range(self.rows)]
             first = next((i for i, g in enumerate(states) if not g), None)
             if first is None:
-                mic_disp, row, note = f">{concs[0]}", None, "全部孔均有生长，超出检测上限"
+                mic_disp, row, note = mic_upper_label(concs[0]), None, "全部孔均有生长，超出检测上限"
             elif first == 0:
-                mic_disp, row, note = f"≤{concs[-1]}", 0, "全部孔均无生长，低于检测下限"
+                mic_disp, row, note = mic_lower_label(concs[-1]), 0, "全部孔均无生长，低于检测下限"
             else:
-                mic_disp, row, note = str(concs[first]), first, ""
+                mic_disp, row, note = mic_label(concs[first]), first, ""
             flags = []
             if any(states[i] and not states[i - 1] for i in range(1, len(states))):
                 flags.append("跳跃孔（低浓度无生长、高浓度有生长），建议人工复核")
@@ -920,17 +953,18 @@ class PlateAnalyzer:
                     p, t_ = best_w[0]
                     flags.append(f"存在 1 个不连续孔（{p}={t_}），已按说明书忽略")
                 if best_k == 0:
-                    mic, mic_well, note = ">" + concs[0], None, "全部孔均有生长，超出检测上限"
+                    mic, mic_well, note = mic_upper_label(concs[0]), None, "全部孔均有生长，超出检测上限"
                 elif best_k == n:
-                    mic, mic_well, note = "≤" + concs[-1], positions[-1], "全部孔均无生长，低于检测下限"
+                    mic, mic_well, note = mic_lower_label(concs[-1]), positions[-1], "全部孔均无生长，低于检测下限"
                 else:
-                    mic, mic_well, note = concs[best_k - 1], positions[best_k - 1], ""
+                    mic, mic_well, note = mic_label(concs[best_k - 1]), positions[best_k - 1], ""
             confs = [wells.get(p, {}).get("confidence") or 0.5 for p in positions]
             mic_list.append({
                 "code": code, "name": tr["name"], "mic": mic, "mic_well": mic_well,
                 "confidence": round(sum(confs) / len(confs), 2),
                 "flags": flags, "note": note,
-                "options": [">" + concs[0]] + concs + ["≤" + concs[-1], "无效"],
+                "options": ([mic_upper_label(concs[0])] + [mic_label(c) for c in concs]
+                            + [mic_lower_label(concs[-1]), "无效"]),
             })
 
         if partial_count >= 10:
@@ -1313,15 +1347,15 @@ def export_excel_batch(plate_results, sample_no="", out_path=None):
 
 
 def qc_in_range(value, range_str):
-    """判断 MIC 值是否在质控范围（'lo-hi'）内。支持 '>x' / '≤x' 形式。返回 True/False/None。"""
+    """判断 MIC 值是否在质控范围（'lo-hi'）内。支持 '>x' / '≥x' / '≤x' 形式。返回 True/False/None。"""
     try:
         lo, hi = [float(x) for x in str(range_str).replace("～", "-").split("-")]
     except Exception:
         return None
     s = str(value).strip()
     try:
-        if s.startswith(">"):
-            return float(s[1:]) < hi
+        if s.startswith(">") or s.startswith("≥"):
+            return float(s.lstrip(">≥")) <= hi
         if s.startswith("≤") or s.startswith("<"):
             return float(s.lstrip("≤<")) >= lo
         return lo <= float(s) <= hi

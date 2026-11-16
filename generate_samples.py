@@ -14,6 +14,8 @@ import os
 import cv2
 import numpy as np
 
+from ast_reader import mic_label, mic_lower_label, mic_upper_label
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT_DIR = os.path.join(HERE, "samples")
 
@@ -68,11 +70,11 @@ def make_truth(rng, concs, skip_col=None, overrides=None):
         first = next((i for i in range(ROWS) if i not in growth_rows), None)
         c = concs[col]
         if first is None:
-            mic[str(col)] = {"display": f">{c[0]}", "row": None}
+            mic[str(col)] = {"display": mic_upper_label(c[0]), "row": None}
         elif first == 0:
-            mic[str(col)] = {"display": f"≤{c[-1]}", "row": 0}
+            mic[str(col)] = {"display": mic_lower_label(c[-1]), "row": 0}
         else:
-            mic[str(col)] = {"display": str(c[first]), "row": first}
+            mic[str(col)] = {"display": mic_label(c[first]), "row": first}
     wells[POS_CONTROL] = "growth"
     wells[NEG_CONTROL] = "no_growth"
     for col in UNUSED_COLS:
