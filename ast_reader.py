@@ -1352,7 +1352,7 @@ def export_record_sheet(plates, template, meta=None, qc=None, out_path=None):
 
     # ---- Sheet：MIC 报告（简洁长表：菌株/菌属/菌种/药物/MIC）----
     headers_r = ["菌株编号", "菌属", "菌种", "培养信息", "时间点", "实验批次", "操作人",
-                 "照片", "药物", "药物名称", "MIC (µg/mL)", "复核", "质控", "备注"]
+                 "照片", "药物", "药物名称", "软件判读", "MIC (µg/mL)", "复核", "质控", "备注"]
     for i, htxt in enumerate(headers_r, start=1):
         cell = wsr.cell(1, i, htxt)
         cell.font = Font(bold=True)
@@ -1385,19 +1385,19 @@ def export_record_sheet(plates, template, meta=None, qc=None, out_path=None):
                         meta.get("batch_no") or "",
                         meta.get("operator") or "",
                         s.get("file", ""),
-                        m["code"], m["name"], final,
+                        m["code"], m["name"], m["mic"], final,
                         "已复核" if s.get("reviewed") else "未复核",
                         qc_mark, note]
             for i, v in enumerate(row_vals, start=1):
                 cell = wsr.cell(rr, i, v)
                 cell.border = border
-                cell.alignment = center if i not in (1, 8, 14) else Alignment(
+                cell.alignment = center if i not in (1, 8, 15) else Alignment(
                     horizontal="left", vertical="center")
             if qc_mark == "超出":
-                wsr.cell(rr, 13).font = red_font
+                wsr.cell(rr, 14).font = red_font
             rr += 1
-    for col_letter, width in zip("ABCDEFGHIJKLMN",
-                                 [18, 10, 12, 14, 8, 12, 10, 22, 7, 14, 12, 8, 8, 40]):
+    for col_letter, width in zip("ABCDEFGHIJKLMNO",
+                                 [18, 10, 12, 14, 8, 12, 10, 22, 7, 14, 10, 12, 8, 8, 40]):
         wsr.column_dimensions[col_letter].width = width
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=ncols)
     ws.cell(1, 1, "真菌药敏板判读记录表（MIC，µg/mL）").font = Font(bold=True, size=14)
@@ -1449,6 +1449,8 @@ def export_record_sheet(plates, template, meta=None, qc=None, out_path=None):
             if not m:
                 continue
             val = m.get("final_mic", m["mic"])
+            if str(val) != str(m["mic"]):
+                notes.append(f"{code} 复核 {m['mic']}→{val}")
             cell = ws.cell(r, 6 + j, val)
             cell.border = border
             cell.alignment = center

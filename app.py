@@ -128,6 +128,8 @@ HTML_PAGE = """<!doctype html>
   .g{background:#f6b8c6}.n{background:#b8cdf6}.p{background:#d9c2f0}.u{background:#f1f2f4}.k{background:#fff}
   .mic{outline:3px solid #2e8b57;outline-offset:-2px}
   .ctrl{outline:2px dashed #ff9800;outline-offset:-2px}
+  .revsel.changed{border-color:#c07000;background:#fff6e0;font-weight:600}
+  .recomp{color:#b26a00;font-size:12px;white-space:nowrap}
   #boardImg{width:100%;border-radius:8px;margin-top:8px}
   .hint{color:#888;font-size:12px}
   .plate{border:1px solid #e3e6ec;border-radius:8px;padding:10px;margin:8px 0}
@@ -212,7 +214,7 @@ HTML_PAGE = """<!doctype html>
     <h2>判读结果</h2>
     <div id="warns"></div>
     <div id="ctrl"></div>
-    <h3>MIC 汇总 <span class="hint">（人工复核：下拉选择最终 MIC 值）</span></h3>
+    <h3>MIC 汇总 <span class="hint">（人工复核：下拉选择最终 MIC 值；软件判读值不会被覆盖）</span></h3>
     <table><thead><tr><th>药物</th><th>名称</th><th>软件判读</th><th>人工复核</th><th>质控范围</th><th>备注</th></tr></thead><tbody id="micRows"></tbody></table>
     <div style="margin-top:12px"><button class="btn green" onclick="downloadExcel()">导出 Excel（报告+登记表）</button>
       <button class="btn ghost" onclick="downloadReviewData()">导出复核数据（训练用 CSV）</button>
@@ -239,6 +241,13 @@ let recordId=null;
 let curWells=null,curMic=null,curMeta=null,recomputeTimer=null;
 let curBatch=null,batchTimer=null;
 let sessionRecords=[];
+// 软件判读值（不可变，键 = 照片名||药物代码）与人工复核值分开存放：
+// 人工修改下拉框只写入 REVIEWS，绝不覆盖 AUTO_MIC；逐孔重算的新值另列为“重算”。
+let AUTO_MIC={},REVIEWS={};
+function _key(f,c){return f+'||'+c;}
+function resetReviewState(){AUTO_MIC={};REVIEWS={};}
+function autoMicOf(file,m){const k=_key(file,m.code);return (k in AUTO_MIC)?AUTO_MIC[k]:m.mic;}
+function rememberAuto(file,mic){(mic||[]).forEach(m=>{const k=_key(file,m.code);if(!(k in AUTO_MIC))AUTO_MIC[k]=m.mic;});}
 function show(which){
   $('result').style.display='block';
   $('singleBox').style.display = which==='single'?'block':'none';
@@ -247,6 +256,7 @@ function show(which){
 async function analyzeBlob(blob,fname){
   $('status').textContent='判读中…';
   $('result').style.display='none';
+  resetReviewState();
   const fd=new FormData();
   fd.append('file',blob,fname);
   fd.append('sample_no',$('sampleNo').value);
@@ -283,6 +293,7 @@ function onPick(el){
 async function analyzeBatch(files){
   $('status').textContent='正在判读 '+files.length+' 张照片…';
   $('result').style.display='none';
+  resetReviewState();
   const fd=new FormData();
   files.forEach(f=>fd.append('files',f,f.name));
   fd.append('sample_no',$('sampleNo').value);
@@ -304,9 +315,13 @@ async function analyzeBatch(files){
   }catch(e){$('status').textContent='请求失败：'+e;}
 }
 function revSelect(file,m){
-  const opts=m.options||[m.mic];
-  return '<select class="revsel" data-file="'+file+'" data-code="'+m.code+'">'+
-    opts.map(v=>'<option'+(v===m.mic?' selected':'')+'>'+v+'</option>').join('')+'</select>';
+  const k=_key(file,m.code);
+  const opts=(m.options||[]).slice();
+  [m.mic, autoMicOf(file,m)].forEach(v=>{if(v!==undefined&&opts.indexOf(v)<0)opts.push(v);});
+  const orig=autoMicOf(file,m);
+  const cur=(k in REVIEWS)?REVIEWS[k]:m.mic;
+  return '<select class="revsel'+(String(cur)!==String(orig)?' changed':'')+'" data-file="'+esc(file)+'" data-code="'+esc(m.code)+'">'+
+    opts.map(v=>'<option'+(String(v)===String(cur)?' selected':'')+'>'+esc(v)+'</option>').join('')+'</select>';
 }
 function qcBadge(m){
   if(!m.qc_range)return '';
@@ -322,10 +337,24 @@ function remarkValue(file,m){
   return (key in REMARKS)?REMARKS[key]:autoNote(m);
 }
 function micTableHtml(file,mic){
-  return mic.map(m=>
-    '<tr><td>'+m.code+'</td><td>'+m.name+'</td><td><b>'+m.mic+'</b></td><td>'+revSelect(file,m)+'</td><td>'+qcBadge(m)+'</td>'+
-    '<td><input type="text" class="remarkInp" data-file="'+esc(file)+'" data-code="'+m.code+'" value="'+esc(remarkValue(file,m))+'" placeholder="可填写备注" style="width:100%;min-width:180px;padding:4px 6px;border:1px solid #ddd;border-radius:6px;font-size:13px"></td></tr>').join('');
+  rememberAuto(file,mic);
+  return mic.map(m=>{
+    const orig=autoMicOf(file,m);
+    const recomp=String(orig)!==String(m.mic);
+    const sw='<b>'+esc(orig)+'</b>'+(recomp?'<div class="recomp" title="逐孔复核后重算值，原始软件判读不覆盖">重算 '+esc(m.mic)+'</div>':'');
+    return '<tr><td>'+esc(m.code)+'</td><td>'+esc(m.name)+'</td><td>'+sw+'</td><td>'+revSelect(file,m)+'</td><td>'+qcBadge(m)+'</td>'+
+    '<td><input type="text" class="remarkInp" data-file="'+esc(file)+'" data-code="'+esc(m.code)+'" value="'+esc(remarkValue(file,m))+'" placeholder="可填写备注" style="width:100%;min-width:180px;padding:4px 6px;border:1px solid #ddd;border-radius:6px;font-size:13px"></td></tr>';
+  }).join('');
 }
+document.addEventListener('change',function(e){
+  const t=e.target;
+  if(t&&t.classList&&t.classList.contains('revsel')){
+    const k=_key(t.dataset.file,t.dataset.code);
+    REVIEWS[k]=t.value;
+    const orig=AUTO_MIC[k];
+    t.classList.toggle('changed', orig!==undefined && String(t.value)!==String(orig));
+  }
+});
 document.addEventListener('input',function(e){
   const t=e.target;
   if(t&&t.classList&&t.classList.contains('remarkInp')){
