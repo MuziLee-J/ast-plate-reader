@@ -139,13 +139,63 @@ Windows 上也可以直接双击启动脚本：`启动判读系统.bat`（仅本
 - 暗点占比：孔内细小暗点像素占比（点状菌落型生长）；
 - 两者分别相对阳性对照归一化，任一 ≥50% 判为生长；网格自动校准为「自相关曲线 + Hough 圆检测」双通道择优，逐孔中心带防误吸保护；跳孔规则同显色板（1 个忽略、≥2 个无效）。
 
-**A板**：卡泊芬净、米卡芬净、阿尼芬净、瑞扎芬净、两性霉素B、艾莎康唑、泊沙康唑、伊曲康唑；阳性对照 E9–E12、F12、G12、H12。
+**A板**（FMIC 对照 A 板面）：A 行卡泊芬净、B 行米卡芬净、C 行阿尼芬净、D 行瑞扎芬净（均 12 孔）、E 行两性霉素B（E1–E8）、F 行艾莎康唑（F1–F11）、G 行泊沙康唑（G1–G11）；阳性对照 E9–E12、F12、G12，阴性对照 H12（H 行其余为空孔，自动忽略）。
 
-**B板**：上排 伏立康唑/氟康唑/氟胞嘧啶，下排同布局（代码带 `-2` 后缀，如 VRC-2 下排）；**上下半区有时接种两个菌株**（同一块板做两块实验）——此时填「下半区菌号」，导出 Excel 时下排药物自动标注下半区菌号。阳性对照 C12、G12；D、H 行为空孔，自动忽略。
+**B板**（FMIC 对照 B 板面）：上半区 A 行伊曲康唑、B 行伏立康唑、C 行氟康唑、D 行氟胞嘧啶；下半区 E–H 行同布局（代码带 `-2` 后缀：ITR-2/VRC-2/FLU-2/FCT-2）。阳性对照 A12、D12、E12、H12。**上下半区有时接种两个菌株**（同一块板做两块实验）——此时填「下半区菌号」，导出 Excel 时下排药物自动标注下半区菌号。
 
 **使用**：把模板下拉切到对应干板（A板/B板）后上传照片。
 
 命令行：`uv run --with opencv-python --with numpy --with openpyxl --with pillow python judge_plates.py templates/dryplate_a.json <照片...>`
+
+## 150 孔真菌显色板（仪器结果图）
+
+真实板型模板：`templates/fungus_150.json`（10 列 × 15 行，共 150 孔）。
+
+- **输入是仪器导出的结果图**（白底 + 彩色方格阵列），不是药敏板照片。软件自动识别 15×10 网格、读取每格颜色并按五色规则判定（`chart_reader.py`）。
+- 板面：A=卡泊芬净、B=米卡芬净、C=瑞扎芬净、D=两性霉素B（1–8 行）/ 阿尼芬净（9–14 行，L 形走向）、E=艾莎康唑、F=泊沙康唑、G=伊曲康唑、H=伏立康唑、I=氟康唑、J=氟胞嘧啶（2–12 行）；阳性对照 J1。
+- 各列浓度自第 1 行向下递增（MIC = 自顶部向下第一个无生长格）；未列出的格子为无药孔，不参与判读。
+- 网页：把模板切到「150 真菌显色板（结果图）」后上传结果图；逐孔板面（15×10）、点格子复核、查看原图、复核数据导出均可用。
+
+## 链球菌微量肉汤板（A / B / C 版）
+
+真实板型模板：`templates/strep_a.json`、`strep_b.json`、`strep_c.json`（链球菌微量肉汤稀释板，标准 96 孔 8×12）。
+
+- **A版**：阿莫西林/克拉维酸（A1–A10）、氨苄西林（B1–B9）、阿莫西林（C1–C10）、氯霉素（D1–D5）+ 克林霉素（D6–D12）、头孢曲松（E1–E9）、头孢噻肟（F1–F9）、头孢呋辛（G1–G5）、红霉素（H1–H9）
+- **B版**：头孢吡肟（A1–A9）+ 亚胺培南/西司他丁（A10）、利奈唑胺（B1–B6）、左氧氟沙星（C1–C6）、美罗培南（D1–D8）、莫西沙星（E1–E8）、新霉素（F1–F8）、青霉素（G1–G9）、利福平（H1–H10）
+- **C版**：复方磺胺甲噁唑（A1–A8）、四环素（B1–B9）、替考拉宁（C1–C8）、替加环素（D1–D8）、万古霉素（E1–E8）
+
+阳性对照 A12、阴性对照 H12；浓度自左向右递减，空孔自动忽略。**判读按说明书（比色/比浊法）**：药敏孔出现浑浊/沉淀即判为生长，澄清为无生长；以生长对照 C+ 为基准，C+ 未生长时结果不可信；药敏孔不读取颜色；SXT 拖尾/微弱生长判为阴性。
+
+判读算法使用链球菌专用 `growth_metric: "pellet"`：先看**孔中心暗点（沉淀/菌膜）与孔内环的亮度对比**，再看**环形区暗像素比例**（弥散浑浊/晕圈）。这样可以排除孔底反光、气泡和中心点的干扰。已用真实链球菌 A 板照片（092-A）验证：与人工复核 **75/75 孔一致（100%）**，9 个药物 MIC 全部一致；该图 C+ 与 C− 均生长，软件正确提示“阴性对照孔 H12 出现生长迹象，可能存在污染，结果不可信”。网页：模板下拉选择对应版本后上传照片。
+
+## 训练闭环：评估与调参
+
+- **评估**：用网页导出的「复核数据（训练用 CSV）」评估软件判读质量：
+  `uv run --with opencv-python --with numpy python evaluate_training.py templates/dryplate_a.json 复核数据1.csv ...`
+  输出孔级一致率、MIC 完全一致率、EA（≤1 个稀释度）和主要差异明细，并生成 `outputs/训练评估报告.md`。
+- **模板内可调参数**（改 JSON 后上传即可生效）：
+  - `detection.growth_rule`：`50_percent`（真菌干板，默认）或 `visible`（细菌板：出现可见浑浊/沉淀即判生长）
+  - `detection.growth_metric`：`pellet`（链球菌板：中心沉淀/菌膜 + 环形区浑浊）或省略（通用浊度度量）
+  - `detection.pellet_thresholds`：链球菌 pellet 度量的阈值（`min_contrast` / `min_halo_dark` / `no_growth_contrast` / `no_growth_halo_dark`）
+  - `detection.absolute_fallback`：低对比度/整板浑浊时的绝对亮度兜底（链球菌模板已开启）
+  - `detection.growth_thresholds`：生长判定阈值（`visible` 默认 0.2/0.1；`50_percent` 默认 0.5/0.3，相对阳性对照）
+  - `detection.drug_growth_thresholds`：单药阈值覆盖（如 SXT 拖尾：`growth_min` 0.5、`no_growth_max` 0.2）
+  - `detection.trailing_codes`：拖尾药物代码（如 `["SXT"]`），临界孔按无生长处理
+  - `detection.partial_policy`：临界孔如何参与 MIC 推导（`no_growth` 默认 / `growth`）
+  - 显色板：`detection.color_thresholds` + `color_rules`（见「颜色分级与判读模型标定」）
+- 已用 8 组复核数据（约 150 张照片/结果图、7500+ 孔）评估：孔级一致率 93.8%–100%，EA 83.9%–98.2%。
+  显色板与 150 板结果图接近满分；干板差异集中在 MIC 边界 ±1 稀释度的拖尾生长判断，建议结合界面上的「临界/跳孔」提示人工复核。
+
+## 打包成 Windows exe（可选）
+
+已用 PyInstaller 打包为单文件程序：`dist/AST-Plate-Reader.exe`（约 80MB，目标电脑无需安装 Python）。
+
+- 双击运行：自动打开浏览器 `http://127.0.0.1:8765`（黑色控制台窗口即服务进程，关闭窗口即停止）。
+- 换端口 / 开放内网：设置环境变量 `AST_PORT`、`AST_HOST`（`0.0.0.0` 为内网可访问）。
+- 数据位置：原图、导出、自定义模板保存在 exe 同目录的 `outputs/`、`templates/`。
+- 重新打包命令：
+  `uv run --with pyinstaller --with fastapi --with uvicorn --with opencv-python --with numpy --with openpyxl --with pillow --with python-multipart python -m PyInstaller --noconfirm --clean --onefile --name AST-Plate-Reader --add-data "templates;templates" --add-data "template.json;." --add-data "qc_rules.json;." --hidden-import uvicorn.logging --hidden-import uvicorn.loops.auto --hidden-import uvicorn.protocols.http.auto --hidden-import uvicorn.protocols.websockets.auto --hidden-import uvicorn.lifespan.on app.py`
+- 注意：个别杀毒软件可能对 PyInstaller 程序误报，需加白名单；同一时间只能运行一个实例（端口冲突）。
 
 ## 颜色分级与判读模型标定（显色法）
 

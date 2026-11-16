@@ -11,6 +11,7 @@ import datetime
 import glob
 import json
 import os
+import sys
 import uuid
 
 import cv2
@@ -20,13 +21,22 @@ from fastapi.responses import FileResponse, HTMLResponse, Response
 from ast_reader import (PlateAnalyzer, export_excel, export_excel_batch,
                         export_record_sheet, load_template, merge_mic,
                         qc_in_range, read_image)
+from chart_reader import analyze_chart
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-TEMPLATES = {"demo": load_template(os.path.join(HERE, "template.json"))}
-for _p in sorted(glob.glob(os.path.join(HERE, "templates", "*.json"))):
+FROZEN = bool(getattr(sys, "frozen", False))          # PyInstaller 打包运行
+RES_DIR = getattr(sys, "_MEIPASS", HERE)              # 资源目录（模板/质控随包）
+DATA_DIR = os.path.dirname(sys.executable) if FROZEN else HERE  # 数据目录（原图/导出/用户模板）
+TEMPLATES = {"demo": load_template(os.path.join(RES_DIR, "template.json"))}
+for _p in sorted(glob.glob(os.path.join(RES_DIR, "templates", "*.json"))):
     TEMPLATES[os.path.splitext(os.path.basename(_p))[0]] = load_template(_p)
-SAMPLES_DIR = os.path.join(HERE, "samples")
-OUT_DIR = os.path.join(HERE, "outputs")
+TPL_SAVE_DIR = os.path.join(DATA_DIR, "templates") if FROZEN else os.path.join(HERE, "templates")
+os.makedirs(TPL_SAVE_DIR, exist_ok=True)
+if FROZEN:   # 打包后：允许在 exe 同目录放自定义模板覆盖/追加
+    for _p in sorted(glob.glob(os.path.join(TPL_SAVE_DIR, "*.json"))):
+        TEMPLATES[os.path.splitext(os.path.basename(_p))[0]] = load_template(_p)
+SAMPLES_DIR = os.path.join(RES_DIR, "samples")
+OUT_DIR = os.path.join(DATA_DIR, "outputs")
 os.makedirs(OUT_DIR, exist_ok=True)
 
 
@@ -48,7 +58,7 @@ def build_meta(sample_no, culture_info, genus, species, batch_no, operator, stra
 
 
 QC_RULES = {}
-_qc_path = os.path.join(HERE, "qc_rules.json")
+_qc_path = os.path.join(RES_DIR, "qc_rules.json")
 if os.path.isfile(_qc_path):
     with open(_qc_path, "r", encoding="utf-8") as _f:
         QC_RULES = json.load(_f)
@@ -212,9 +222,6 @@ HTML_PAGE = """<!doctype html>
   <div id="batchBox" style="display:none">
     <h2>多图判读结果 <span class="badge">同一菌株</span></h2>
     <div id="batchWarns"></div>
-    <h3>合并 MIC 汇总</h3>
-    <div class="hint" style="margin-bottom:4px">同一药物多图结果一致会合并；不一致会分行标红，请人工复核</div>
-    <table><thead><tr><th>药物</th><th>名称</th><th>MIC (µg/mL)</th><th>置信度</th><th>来源照片</th><th>备注</th></tr></thead><tbody id="mergedRows"></tbody></table>
     <h3>各照片明细</h3>
     <div id="plateList"></div>
     <div style="margin-top:12px"><button class="btn green" onclick="downloadExcel()">导出 Excel（登记表 · 每张照片分别记录）</button>
@@ -307,10 +314,24 @@ function qcBadge(m){
                 :'<span style="color:#c0392b;font-weight:bold">超出 '+m.qc_range+'</span>';
 }
 function micPosOf(mic){const p={};mic.forEach(m=>{if(m.mic_well)p[m.mic_well]=1;else if(m.mic_row)p[m.mic_row+m.col]=1;});return p;}
+let REMARKS={};
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function autoNote(m){return (m.flags&&m.flags.length)?m.flags.join('；'):(m.note||'');}
+function remarkValue(file,m){
+  const key=file+'||'+m.code;
+  return (key in REMARKS)?REMARKS[key]:autoNote(m);
+}
 function micTableHtml(file,mic){
   return mic.map(m=>
-    '<tr><td>'+m.code+'</td><td>'+m.name+'</td><td><b>'+m.mic+'</b></td><td>'+revSelect(file,m)+'</td><td>'+qcBadge(m)+'</td><td class="hint">'+(((m.flags&&m.flags.length)?m.flags.join('；'):m.note)||'')+'</td></tr>').join('');
+    '<tr><td>'+m.code+'</td><td>'+m.name+'</td><td><b>'+m.mic+'</b></td><td>'+revSelect(file,m)+'</td><td>'+qcBadge(m)+'</td>'+
+    '<td><input type="text" class="remarkInp" data-file="'+esc(file)+'" data-code="'+m.code+'" value="'+esc(remarkValue(file,m))+'" placeholder="可填写备注" style="width:100%;min-width:180px;padding:4px 6px;border:1px solid #ddd;border-radius:6px;font-size:13px"></td></tr>').join('');
 }
+document.addEventListener('input',function(e){
+  const t=e.target;
+  if(t&&t.classList&&t.classList.contains('remarkInp')){
+    REMARKS[t.dataset.file+'||'+t.dataset.code]=t.value;
+  }
+});
 function ctrlLine(controls,sample){
   const ck=Object.entries(controls).map(([p,v])=>p+' '+v.role+'：'+(v.ok?'正常 ✓':'异常 ✗')).join('　');
   return '对照孔：'+ck+(sample.time_point?'　时间点：'+sample.time_point:'')+(sample.culture_info?'　培养：'+sample.culture_info:'');
@@ -323,23 +344,25 @@ function wellTop(w){
 }
 function wellStTxt(s){return s==='growth'?'生长':(s==='no_growth'?'抑制':(s==='partial'?'临界':(s==='unknown'?'?':'')))}
 const CDOT={blue:'#4a7fd4',purple:'#8e6fc4',pink:'#e56a94',pink_white:'#f0b6cc',white:'#e8e8e8'};
-function buildGridHtml(wmap,micPos,idx){
-  let html='<tr><th></th>'; for(let j=1;j<=12;j++)html+='<th>'+j+'</th>'; html+='</tr>';
+const DEF_LAYOUT={row_labels:'ABCDEFGH'.split(''),col_labels:Array.from({length:12},(_,i)=>String(i+1)),pos_order:'rowfirst'};
+function buildGridHtml(wmap,micPos,idx,layout){
+  const L=layout||DEF_LAYOUT;
+  let html='<tr><th></th>'; L.col_labels.forEach(c=>{html+='<th>'+c+'</th>';}); html+='</tr>';
   const ia=(idx!==undefined&&idx!==null)?' data-idx="'+idx+'"':'';
-  for(let i=0;i<8;i++){
-    const L='ABCDEFGH'[i];
-    html+='<tr><th>'+L+'</th>';
-    for(let j=1;j<=12;j++){
-      const pos=L+j,w=wmap[pos]; if(!w){html+='<td></td>';continue;}
+  L.row_labels.forEach(rl=>{
+    html+='<tr><th>'+rl+'</th>';
+    L.col_labels.forEach(cl=>{
+      const pos=(L.pos_order==='colfirst')?(cl+rl):(rl+cl);
+      const w=wmap[pos]; if(!w){html+='<td></td>';return;}
       let cls=w.status==='growth'?'g':(w.status==='no_growth'?'n':(w.status==='partial'?'p':(w.status==='unused'?'u':'k')));
       if(micPos[pos])cls+=' mic';
       if(w.role==='positive_control'||w.role==='negative_control')cls+=' ctrl';
       const tip=pos+(w.drug?' '+w.drug+' '+(w.conc??''):'')+(w.color_label?' · '+w.color_label:'');
       const dot=w.color?'<span class="cd" style="background:'+(CDOT[w.color]||'#ccc')+'"></span>':'';
       html+='<td data-pos="'+pos+'"'+ia+' class="'+cls+'" title="'+tip+'"><div>'+wellTop(w)+'</div><div style="font-weight:700">'+dot+wellStTxt(w.status)+'</div></td>';
-    }
+    });
     html+='</tr>';
-  }
+  });
   return html;
 }
 function buildHotspots(wmap,size,shapeR){
@@ -358,7 +381,7 @@ function setHotspot(svgEl,wmap,size,shapeR,clickFn){
     c.addEventListener('click',()=>clickFn(c.dataset.pos));
   });
 }
-function refreshGrid(){if(!curWells)return;$('grid').innerHTML=buildGridHtml(curWells,micPosOf(curMic||[]));bindWellClicks();}
+function refreshGrid(){if(!curWells)return;$('grid').innerHTML=buildGridHtml(curWells,micPosOf(curMic||[]),undefined,curMeta&&curMeta.layout);bindWellClicks();}
 function bindWellClicks(){
   const inter=!!(curMeta&&curMeta.interactive);
   document.querySelectorAll('#grid td[data-pos]').forEach(td=>{
@@ -407,13 +430,14 @@ function render(data){
   const wmap={}; res.wells.forEach(w=>{wmap[w.pos]=w;});
   curWells=wmap;
   curMeta={interactive:(res.mic||[]).some(m=>m.options),
+           layout:res.layout,
            template_id:$('templateSel').value||'demo',
            genus:$('genusSel').value||'candida',
            sample_no:$('sampleNo').value||'',
            time_point:$('timePoint').value||'',
            file:res.sample.file,
            sampleInfo:res.sample};
-  $('grid').innerHTML=buildGridHtml(curWells,micPosOf(res.mic));
+  $('grid').innerHTML=buildGridHtml(curWells,micPosOf(res.mic),undefined,res.layout);
   bindWellClicks();
   $('gridHint').textContent=curMeta.interactive?'逐孔板面：点击任意孔位循环切换 生长→抑制→临界，MIC 与质控会自动重算':'逐孔板面（当前板型只读展示）';
   $('boardIdle').style.display='none';
@@ -423,18 +447,13 @@ function render(data){
   setHotspot($('boardHot'),curMeta.interactive?curWells:null,res.sample.size,res.sample.well_r_orig,wellClick);
   $('origLink').href='/api/orig/'+recordId+'/0';
 }
-function mergedRowsHtml(merged){
-  return merged.map(m=>
-    '<tr class="'+(m.conflict?'conflict':'')+'"><td>'+m.code+'</td><td>'+m.name+'</td><td><b>'+m.mic+'</b></td><td>'+
-    Math.round(m.confidence*100)+'%</td><td class="hint">'+m.sources.join('、')+'</td><td class="hint">'+m.note+'</td></tr>').join('');
-}
 function batchCtrlText(p){
   const ck=Object.entries(p.controls).map(([pos,v])=>pos+' '+v.role+'：'+(v.ok?'正常 ✓':'异常 ✗')).join('　');
   return '对照孔：'+ck+'　（已按逐孔复核重算）';
 }
 function batchGridHtml(i){
   const p=curBatch.plates[i];
-  return buildGridHtml(p.wmap,micPosOf(p.mic),i);
+  return buildGridHtml(p.wmap,micPosOf(p.mic),i,curBatch&&curBatch.layout);
 }
 function refreshBatchGrids(i){
   if(i===0)$('grid').innerHTML=batchGridHtml(0);
@@ -487,7 +506,6 @@ async function doRecomputeBatch(){
       if(dt)dt.textContent=p.warnings.length?p.warnings.length+' 条警告':'无警告';
       refreshBatchGrids(i);
     });
-    $('mergedRows').innerHTML=mergedRowsHtml(d.merged_mic);
   }catch(e){}
 }
 function renderBatch(data){
@@ -496,6 +514,7 @@ function renderBatch(data){
   $('reviewedChk').dataset.file=''; $('reviewedChk').checked=false;
   curWells=null;curMic=null;curMeta={interactive:false};
   curBatch={template_id:$('templateSel').value||'demo',
+            layout:(b.plates[0]&&b.plates[0].layout)||null,
             genus:$('genusSel').value||'candida',
             sample_no:$('sampleNo').value||'',
             time_point:$('timePoint').value||'',
@@ -523,12 +542,11 @@ function renderBatch(data){
     $('gridHint').textContent='逐孔板面（第 1 张照片）：点击任意孔位循环切换 生长→抑制→临界，该照片 MIC 与下方合并结果自动重算';
   }else{
     const wmap0={}; (b.plates[0].wells||[]).forEach(w=>{wmap0[w.pos]=w;});
-    $('grid').innerHTML=buildGridHtml(wmap0,{});
+    $('grid').innerHTML=buildGridHtml(wmap0,{},undefined,curBatch.layout);
     $('gridHint').textContent='逐孔板面（多图模式：第 1 张只读展示；各照片复核在下方明细中进行）';
   }
   bindBatchWellClicks();
   $('batchWarns').innerHTML=(b.errors||[]).map(e=>'<div class="warn">✗ '+e.file+'：'+e.error+'</div>').join('');
-  $('mergedRows').innerHTML=mergedRowsHtml(b.merged_mic);
   $('plateList').innerHTML=b.plates.map((p,i)=>{
     const ck=Object.entries(p.controls).map(([pos,v])=>pos+' '+v.role+'：'+(v.ok?'正常 ✓':'异常 ✗')).join('　');
     const warns=(p.warnings||[]).map(w=>'<div class="warn">⚠ '+w+'</div>').join('');
@@ -537,7 +555,7 @@ function renderBatch(data){
              '<div class="hint" style="margin-top:4px">点击照片上的孔位即可复核；<a href="/api/orig/'+data.record_id+'/'+i+'" target="_blank" style="color:#2f6fed">查看原图 ↗</a></div>';
     if(interactive){
       const wmap={};(p.wells||[]).forEach(w=>{wmap[w.pos]=w;});
-      left+='<div class="gridwrap" style="margin-top:6px"><table class="grid" id="grid_'+i+'">'+buildGridHtml(wmap,micPosOf(p.mic),i)+'</table></div>';
+      left+='<div class="gridwrap" style="margin-top:6px"><table class="grid" id="grid_'+i+'">'+buildGridHtml(wmap,micPosOf(p.mic),i,curBatch&&curBatch.layout)+'</table></div>';
     }
     return '<details '+(i===0?'open':'')+' class="plate"><summary>照片 '+(i+1)+'：'+p.sample.file+
       ((p.warnings&&p.warnings.length)?'<span class="badge">'+p.warnings.length+' 条警告</span>':'<span class="badge">无警告</span>')+
@@ -587,7 +605,9 @@ function updateRuleBox(){
   const tid=$('templateSel').value||'demo';
   const info=TPL_INFO[tid]||{};
   let t;
-  if(info.mode==='growth'){
+  if(info.reading){
+    t=info.reading;
+  }else if(info.mode==='growth'){
     t='无显色剂干板：按孔内生长（均匀浑浊或点状菌落）判读；生长量 ≥ 阳性对照 50% 计为生长（参考 CLSI M27 微量肉汤稀释法）；MIC = 最低无生长孔浓度；跳孔 1 个忽略、≥2 个无效。';
     if(info.halves)t+='　B板上、下半区布局相同，可接种两个菌株——下半区菌号填上方输入框，导出时下排药物单独标注。';
   }else{
@@ -632,10 +652,16 @@ async function downloadExcel(){
   document.querySelectorAll('.revchk').forEach(chk=>{
     if(chk.dataset.file) reviewed[chk.dataset.file]=chk.checked;
   });
+  const remarks={};
+  document.querySelectorAll('.remarkInp').forEach(inp=>{
+    const f=inp.dataset.file,code=inp.dataset.code;
+    (remarks[f]=remarks[f]||{})[code]=inp.value;
+  });
   const fd=new FormData();
   fd.append('record_id',recordId);
   fd.append('reviews',JSON.stringify(reviews));
   fd.append('reviewed',JSON.stringify(reviewed));
+  fd.append('remarks',JSON.stringify(remarks));
   const r=await fetch('/api/export',{method:'POST',body:fd});
   const b=await r.blob();
   const a=document.createElement('a');
@@ -676,6 +702,7 @@ def index():
 def list_templates():
     return {"templates": [{"id": k, "name": v.get("name", k),
                            "mode": (v.get("detection") or {}).get("mode", "color"),
+                           "reading": (v.get("detection") or {}).get("reading", ""),
                            "halves": bool(v.get("halves"))}
                           for k, v in TEMPLATES.items()]}
 
@@ -707,7 +734,7 @@ async def upload_template(file: UploadFile = File(...)):
     safe = "".join(ch for ch in stem if ch.isalnum() or ch in "-_") or "custom"
     tid = "upload_" + safe
     try:
-        with open(os.path.join(HERE, "templates", f"{tid}.json"), "w",
+        with open(os.path.join(TPL_SAVE_DIR, f"{tid}.json"), "w",
                   encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
     except Exception as e:
@@ -735,8 +762,13 @@ async def analyze(file: UploadFile = File(...), sample_no: str = Form(""),
     try:
         with open(orig, "wb") as f:
             f.write(await file.read())
-        analyzer = PlateAnalyzer(get_template(template_id))
-        result = analyzer.run(orig, outdir=OUT_DIR, sample_no=sample_no.strip(), genus=genus)
+        tpl = get_template(template_id)
+        if tpl.get("panel_type") == "chart150":
+            result = analyze_chart(orig, tpl, outdir=OUT_DIR,
+                                   sample_no=sample_no.strip(), genus=genus)
+        else:
+            analyzer = PlateAnalyzer(tpl)
+            result = analyzer.run(orig, outdir=OUT_DIR, sample_no=sample_no.strip(), genus=genus)
         result["orig"] = orig
         s = result["sample"]
         s["file"] = file.filename or s["file"]
@@ -775,8 +807,13 @@ async def analyze_batch(files: list[UploadFile] = File(...), sample_no: str = Fo
         try:
             with open(orig, "wb") as fp:
                 fp.write(await f.read())
-            analyzer = PlateAnalyzer(get_template(template_id))
-            res = analyzer.run(orig, outdir=OUT_DIR, sample_no=sample_no.strip(), genus=genus)
+            tpl = get_template(template_id)
+            if tpl.get("panel_type") == "chart150":
+                res = analyze_chart(orig, tpl, outdir=OUT_DIR,
+                                    sample_no=sample_no.strip(), genus=genus)
+            else:
+                analyzer = PlateAnalyzer(tpl)
+                res = analyzer.run(orig, outdir=OUT_DIR, sample_no=sample_no.strip(), genus=genus)
             res["orig"] = orig
             s = res["sample"]
             s["file"] = f.filename or s["file"]
@@ -806,7 +843,8 @@ async def analyze_batch(files: list[UploadFile] = File(...), sample_no: str = Fo
                   "meta": build_meta(sample_no, culture_info, genus, species,
                                      batch_no, operator, strain2),
                   "qc": rset}
-    plates = [{k: p[k] for k in ("sample", "controls", "warnings", "mic", "wells", "image_b64")}
+    plates = [{k: p[k] for k in ("sample", "controls", "warnings", "mic", "wells",
+                                  "layout", "image_b64")}
               for p in plate_results]
     return {"ok": True, "record_id": rid,
             "batch": {"sample_no": sample_no.strip(),
@@ -921,7 +959,7 @@ async def review_data(record_id: str = Form(...), wells: str = Form("[]")):
     buf = io.StringIO()
     wr = csv.writer(buf)
     wr.writerow(["照片", "孔位", "角色", "药物", "浓度", "色相H", "饱和度S", "明度V",
-                 "颜色分级", "软件判读", "复核判读"])
+                 "颜色分级", "生长度量", "置信度", "软件判读", "复核判读"])
     role_cn = {"drug": "药物", "positive_control": "阳性对照",
                "negative_control": "阴性对照", "unused": "未使用"}
     for i, plate in enumerate(rec.get("plates", [])):
@@ -933,6 +971,7 @@ async def review_data(record_id: str = Form(...), wells: str = Form("[]")):
             wr.writerow([fname, pos, role_cn.get(wl.get("role"), wl.get("role")),
                          wl.get("drug", ""), wl.get("conc", ""),
                          hsv[0], hsv[1], hsv[2], wl.get("color_label", ""),
+                         wl.get("score", ""), wl.get("confidence", ""),
                          wl.get("status", ""), states.get(pos) or wl.get("status", "")])
     from urllib.parse import quote
     fn = quote("复核数据_训练用.csv")
@@ -943,24 +982,28 @@ async def review_data(record_id: str = Form(...), wells: str = Form("[]")):
 
 @app.post("/api/export")
 async def export(record_id: str = Form(...), reviews: str = Form("{}"),
-                 reviewed: str = Form("{}")):
+                 reviewed: str = Form("{}"), remarks: str = Form("{}")):
     rec = STORE.get(record_id)
     if not rec:
         return Response("记录不存在或已过期", status_code=404)
     try:
         reviews_map = json.loads(reviews or "{}")
         reviewed_map = json.loads(reviewed or "{}")
+        remarks_map = json.loads(remarks or "{}")
     except Exception:
-        reviews_map, reviewed_map = {}, {}
+        reviews_map, reviewed_map, remarks_map = {}, {}, {}
     plates = rec["plates"]
     tpl = get_template(rec.get("template_id", "demo"))
     for p in plates:
         fname = p.get("sample", {}).get("file", "")
         p["sample"]["reviewed"] = bool(reviewed_map.get(fname, False))
+        rm = remarks_map.get(fname) or {}
         for m in p.get("mic", []):
             rv = (reviews_map.get(fname) or {}).get(m.get("code"))
             if rv:
                 m["final_mic"] = rv
+            if m.get("code") in rm:
+                m["remark"] = rm[m["code"]]
     meta = dict(rec.get("meta") or {})
     meta["date"] = datetime.date.today().isoformat()
     try:
@@ -986,4 +1029,8 @@ if __name__ == "__main__":
     # 默认只允许本机访问；启动（局域网）脚本会把 AST_HOST 设为 0.0.0.0 开放给内网
     host = os.environ.get("AST_HOST", "127.0.0.1")
     port = int(os.environ.get("AST_PORT", "8765"))
+    if FROZEN and os.environ.get("AST_NO_BROWSER") != "1":
+        import threading
+        import webbrowser
+        threading.Timer(2.0, lambda: webbrowser.open(f"http://127.0.0.1:{port}")).start()
     uvicorn.run(app, host=host, port=port)

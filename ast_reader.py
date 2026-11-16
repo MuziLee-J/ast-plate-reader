@@ -17,7 +17,7 @@ import cv2
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROW_LETTERS = "ABCDEFGH"
+ROW_LETTERS = "ABCDEFGHIJ"
 
 try:
     from openpyxl import Workbook
@@ -110,12 +110,22 @@ class PlateAnalyzer:
         sx, sy = W / self.pw_mm, H / self.ph_mm
         ox, oy = self.grid.get("origin_mm", [14.38, 11.24])
         pitch = self.grid.get("pitch_mm", 9.0)
+        if isinstance(pitch, (list, tuple)):
+            px, py = float(pitch[0]), float(pitch[1])
+        else:
+            px = py = float(pitch)
         pts = {}
         for i in range(self.rows):
             for j in range(self.cols):
                 pts[f"{ROW_LETTERS[i]}{j + 1}"] = (
-                    int(round((ox + j * pitch) * sx)), int(round((oy + i * pitch) * sy)))
+                    int(round((ox + j * px) * sx)), int(round((oy + i * py) * sy)))
         return pts
+
+    def _nominal_pitch(self):
+        p = self.grid.get("pitch_mm", 9.0)
+        if isinstance(p, (list, tuple)):
+            return float(sum(float(v) for v in p) / len(p))
+        return float(p)
 
     def refine_centers(self, warped, pts):
         """用孔壁暗环的质心修正每个孔的模板中心；
@@ -339,7 +349,7 @@ class PlateAnalyzer:
             return cands[0][0], cands[0][1], bool(pts is not None and hc is not None)
 
         saved = self.well_r_px
-        nominal = self.grid.get("pitch_mm", 9.0)
+        nominal = self._nominal_pitch()
         best, best_sc, trusted = None, -1e18, False
         for c, pitch in cands:
             if pitch > 0:
@@ -461,7 +471,7 @@ class PlateAnalyzer:
         否则孔环对齐模板；再退到纯模板。"""
         auto_centers, pitch_avg, trusted = self.fit_grid(warped)
         tmpl_centers = self.template_centers(*warped.shape[:2][::-1])
-        nominal = self.grid.get("pitch_mm", 9.0)
+        nominal = self._nominal_pitch()
         d_t = self.grid_score(warped, tmpl_centers)
         r_t = self.grid_rim_score(warped, tmpl_centers)
         self.grid_trusted = False
@@ -533,7 +543,15 @@ class PlateAnalyzer:
                     return None
                 return float(gray[py - rad:py + rad + 1, px - rad:px + rad + 1].mean())
 
-            raw, spots = {}, {}
+            det_g = self.t.get("detection") or {}
+            pellet_metric = det_g.get("growth_metric") == "pellet"
+            pt = det_g.get("pellet_thresholds") or {}
+            pmin = float(pt.get("min_contrast", 0.018))
+            hmin = float(pt.get("min_halo_dark", 0.08))
+            pn = float(pt.get("no_growth_contrast", 0.012))
+            hn = float(pt.get("no_growth_halo_dark", 0.075))
+            raw, spots, med = {}, {}, {}
+            pellet, halo = {}, {}
             sq = int(round(self.well_r_px * 2.6))
             mrad = max(6, int(round(self.well_r_px * 0.72)))
             yy2, xx2 = np.mgrid[0:sq, 0:sq]
@@ -547,17 +565,18 @@ class PlateAnalyzer:
                     spots[pos] = None
                     continue
                 bg = float(np.median(px))
+                med[pos] = bg
                 col, rowL = int(pos[1:]), pos[0]
                 gaps = []
                 for dx, dy, d in ((gap_half, 0, "r"), (-gap_half, 0, "l"),
                                   (0, gap_half, "d"), (0, -gap_half, "u")):
                     if d == "l" and col == 1:      # 边缘孔：不向板外方向采样（避免板壁/阴影干扰）
                         continue
-                    if d == "r" and col == 12:
+                    if d == "r" and col == self.cols:
                         continue
-                    if d == "u" and rowL == "A":
+                    if d == "u" and rowL == ROW_LETTERS[0]:
                         continue
-                    if d == "d" and rowL == "H":
+                    if d == "d" and rowL == ROW_LETTERS[self.rows - 1]:
                         continue
                     v = gap_patch(cx + dx, cy + dy)
                     if v is not None and v > bg - 60:   # 剔除落入背景/阴影的采样点
@@ -570,6 +589,23 @@ class PlateAnalyzer:
                     spots[pos] = float((det[cmask] < -8).mean())   # 暗点占比：孔内点状菌落
                 else:
                     spots[pos] = None
+                if pellet_metric:
+                    d2 = (xx - cx) ** 2 + (yy - cy) ** 2
+                    core_m = d2 <= (0.22 * self.well_r_px) ** 2
+                    ann_m = ((d2 > (0.28 * self.well_r_px) ** 2) &
+                             (d2 <= (0.72 * self.well_r_px) ** 2))
+                    bg_m = ((d2 > (1.15 * self.well_r_px) ** 2) &
+                            (d2 <= (1.45 * self.well_r_px) ** 2))
+                    if core_m.sum() >= 20 and ann_m.sum() >= 50:
+                        core_med = float(np.median(gray[core_m]))
+                        ann_med = float(np.median(gray[ann_m]))
+                        plate_bg = (float(np.median(gray[bg_m]))
+                                    if bg_m.sum() >= 20 else ann_med)
+                        pellet[pos] = max(0.0, ann_med - core_med) / max(1.0, ann_med)
+                        halo[pos] = float((gray[ann_m] < plate_bg - 8).mean())
+                    else:
+                        pellet[pos] = None
+                        halo[pos] = None
             ctrls2 = self.t.get("controls", {})
             pc2 = ctrls2.get("positive")
             pcs2 = pc2 if isinstance(pc2, list) else ([pc2] if pc2 else [])
@@ -580,6 +616,20 @@ class PlateAnalyzer:
 
             ref = _median_of(raw)
             ref_sp = _median_of(spots)
+            # 低对比度/整板浑浊时的兜底：用孔内绝对亮度在“生长对照(暗)～最亮孔(清)”之间归一化。
+            # 仅在局部浊度基准很弱（ref 很小）且板内有足够动态范围时启用。
+            abs_ratio = {}
+            if det_g.get("absolute_fallback"):
+                pcs_med = [med[p_] for p_ in pcs2 if med.get(p_) is not None]
+                vals = [v for v in med.values() if v is not None]
+                if pcs_med and len(vals) >= 10:
+                    growth_level = float(np.median(pcs_med))
+                    clear_level = float(np.percentile(vals, 90))
+                    span = clear_level - growth_level
+                    if span > 15:
+                        for p_, v_ in med.items():
+                            if v_ is not None:
+                                abs_ratio[p_] = max(0.0, min(1.0, (clear_level - v_) / span))
             wells = {}
             for pos in centers:
                 role, code, _, conc = self._well_meta(pos)
@@ -591,21 +641,61 @@ class PlateAnalyzer:
                     rec.update(status="unused", growth=None, score=None, confidence=None)
                     wells[pos] = rec
                     continue
+                if pellet_metric:
+                    pc, ad = pellet.get(pos), halo.get(pos)
+                    if pc is None or ad is None:
+                        rec.update(status="unknown", growth=None, score=None, confidence=0.0)
+                    else:
+                        score = max(pc / max(pmin, 1e-6), ad / max(hmin, 1e-6))
+                        if pc >= pmin or ad >= hmin:
+                            cls = "growth"
+                        elif pc <= pn and ad <= hn:
+                            cls = "no_growth"
+                        else:
+                            cls = "partial"
+                        conf = min(0.95, 0.55 + abs(score - 1.0) * 0.2)
+                        rec.update(status=cls, growth=(cls == "growth"),
+                                   score=round(float(score), 2),
+                                   confidence=round(float(conf), 2))
+                    wells[pos] = rec
+                    continue
                 sc, sp = raw.get(pos), spots.get(pos)
                 if sc is None:
                     rec.update(status="unknown", growth=None, score=None, confidence=0.0)
-                elif ref and ref > 1e-6:
-                    r2 = max(0.0, sc) / ref                # 浊度：相对阳性对照
-                    if sp is not None and ref_sp and ref_sp > 1e-6:
-                        ratio = max(r2, sp / ref_sp)       # 暗点：任一形态达标即生长（CLSI M27：≥50% 为生长）
+                elif ((ref and ref > 1e-6) or
+                      (det_g.get("absolute_fallback") and pos in abs_ratio)):
+                    trailing = set(det_g.get("trailing_codes") or [])
+                    if det_g.get("absolute_fallback") and (ref is None or ref < 10) and pos in abs_ratio:
+                        ratio = abs_ratio[pos]             # 低对比度板：改用孔内绝对亮度
                     else:
-                        ratio = r2
-                    if ratio >= 0.5:
+                        r2 = max(0.0, sc) / ref            # 浊度：相对阳性对照
+                        if code in trailing:
+                            # 拖尾药物只看浊度（避免“暗点”度量把微弱浑浊放大）
+                            ratio = r2
+                        elif sp is not None and ref_sp and ref_sp > 1e-6:
+                            ratio = max(r2, sp / ref_sp)   # 暗点：点状菌落形态
+                        else:
+                            ratio = r2
+                    rule = det_g.get("growth_rule", "50_percent")
+                    gth = det_g.get("growth_thresholds") or {}
+                    if rule == "visible":
+                        # 细菌微量肉汤法：出现可见浑浊/沉淀即判生长（不套用真菌 M27 的 50% 规则）
+                        gmin = float(gth.get("growth_min", 0.2))
+                        nmax = float(gth.get("no_growth_max", 0.1))
+                    else:
+                        gmin = float(gth.get("growth_min", 0.5))
+                        nmax = float(gth.get("no_growth_max", 0.3))
+                    # 单药阈值覆盖（如 SXT 拖尾：微弱生长判阴性）
+                    ov = (det_g.get("drug_growth_thresholds") or {}).get(code or "")
+                    if ov:
+                        gmin = float(ov.get("growth_min", gmin))
+                        nmax = float(ov.get("no_growth_max", nmax))
+                    if ratio >= gmin:
                         cls = "growth"
-                        conf = min(0.95, 0.55 + (ratio - 0.5) * 0.6)
-                    elif ratio <= 0.3:
+                        conf = min(0.95, 0.55 + (ratio - gmin) * 0.6)
+                    elif ratio <= nmax:
                         cls = "no_growth"
-                        conf = min(0.95, 0.55 + (0.3 - ratio) * 0.6)
+                        conf = min(0.95, 0.55 + (nmax - ratio) * 0.6)
                     else:
                         cls, conf = "partial", 0.35
                     rec.update(status=cls, growth=(cls == "growth"),
@@ -777,6 +867,8 @@ class PlateAnalyzer:
         genus_rule = (self.t.get("genus_rules") or {}).get(self.genus or "", {})
         purple_growth = set(genus_rule.get("purple_as_growth")
                             or self.t.get("detection", {}).get("purple_as_growth_for", []))
+        partial_policy = (self.t.get("detection") or {}).get("partial_policy", "no_growth")
+        trailing_codes = set((self.t.get("detection") or {}).get("trailing_codes") or [])
         mic_list = []
         partial_count = 0
         for code, tr in self.tracks.items():
@@ -792,7 +884,10 @@ class PlateAnalyzer:
                     states.append(False)
                 elif st == "partial":
                     partial_count += 1
-                    states.append(code in purple_growth)     # 紫色：仅指定药物按生长计
+                    if code in trailing_codes:
+                        states.append(False)      # SXT 等拖尾药物：微弱生长判阴性
+                    else:
+                        states.append(True if partial_policy == "growth" else (code in purple_growth))
                 else:
                     states.append(None)
 
@@ -994,6 +1089,9 @@ class PlateAnalyzer:
             "wells": well_list,
             "annotated": ann_path,
             "warped": grid_path,
+            "layout": {"row_labels": list(ROW_LETTERS[:self.rows]),
+                       "col_labels": [str(j + 1) for j in range(self.cols)],
+                       "pos_order": "rowfirst"},
         }
 
 
@@ -1273,7 +1371,8 @@ def export_record_sheet(plates, template, meta=None, qc=None, out_path=None):
             if rng:
                 ok_ = qc_in_range(final, rng)
                 qc_mark = "在控" if ok_ else ("超出" if ok_ is False else "")
-            note = "；".join(m.get("flags") or []) or m.get("note", "")
+            auto = "；".join(m.get("flags") or []) or m.get("note", "")
+            note = m["remark"] if m.get("remark") is not None else auto
             sid = meta.get("sample_no") or s.get("sample_no") or ""
             if m["code"] in lower_codes and meta.get("strain2"):
                 sid = meta["strain2"]                     # B板下半区（第二个菌株）用下半区菌号
@@ -1360,6 +1459,9 @@ def export_record_sheet(plates, template, meta=None, qc=None, out_path=None):
                     notes.append(f"{code} 超出质控范围 {ranges[code]}")
             for fl in m.get("flags", []):
                 notes.append(fl)
+            auto_n = "；".join(m.get("flags") or []) or m.get("note", "")
+            if m.get("remark") and m.get("remark") != auto_n:
+                notes.append(f"{code}备注：{m['remark']}")
         ws.cell(r, 1, idx + 1).alignment = center
         ws.cell(r, 2, s.get("sample_no") or meta.get("sample_no") or "")
         ws.cell(r, 3, s.get("culture_info") or meta.get("culture_info") or "")

@@ -4,3 +4,7 @@ outputs/
 samples/real_*.jpg
 *.log
 learned_color_thresholds.json
+samples/chart150_test.png
+build/
+dist/
+*.spec
