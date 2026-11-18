@@ -2,11 +2,14 @@
 """批量跑判读并与真实值比对，输出准确率。
 
 用法:
-    uv run --with opencv-python --with numpy --with openpyxl --with pillow python verify.py
+    uv run --with opencv-python --with numpy --with openpyxl --with pillow python verify.py [模板.json]
+
+需要自备 template.json 与 samples/（真实值 *_truth.json）；仓库不含任何板面数据。
 """
 import glob
 import json
 import os
+import sys
 
 from ast_reader import PlateAnalyzer, load_template, read_image
 
@@ -14,7 +17,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 
 def main():
-    template = load_template(os.path.join(HERE, "template.json"))
+    tpl_path = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, "template.json")
+    if not os.path.isfile(tpl_path):
+        print(f"找不到模板 {tpl_path}：请先放置模板 JSON 或作为第 1 个参数传入。")
+        return
+    template = load_template(tpl_path)
     outdir = os.path.join(HERE, "outputs")
     os.makedirs(outdir, exist_ok=True)
 

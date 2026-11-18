@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """命令行批量判读：指定模板 + 多张照片。
 
-用法（在 ast-demo 目录）:
+用法（模板与照片由使用者自备，仓库不含板面）:
     uv run --with opencv-python --with numpy --with openpyxl --with pillow python judge_plates.py <模板.json> <照片1> [照片2 ...]
 """
 import os
@@ -13,6 +13,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 
 def main():
+    if len(sys.argv) < 3:
+        print("用法: python judge_plates.py <模板.json> <照片1> [照片2 ...]")
+        return
     tpl_path = sys.argv[1]
     paths = sys.argv[2:]
     tpl = load_template(tpl_path)

@@ -43,9 +43,9 @@ uv run --with pyinstaller --with fastapi --with uvicorn --with opencv-python --w
 | `app.py` | Web 服务与单页前端 |
 | `ast_reader.py` | 判读管线（配准、取色、判读、MIC、导出） |
 | `chart_reader.py` | 仪器结果图（150 孔方格阵列）识别 |
-| `judge_plates.py` | 命令行批量判读 |
+| `judge_plates.py` | 命令行批量判读（需自备模板与照片） |
 | `evaluate_training.py` / `fit_color_model.py` | 复核数据评估 / 颜色阈值标定 |
-| `verify.py` / `generate_samples.py` | 合成样本与准确率自检（需自备模板） |
+| `verify.py` / `generate_samples.py` | 合成样本与准确率自检（需自备模板；脚本本身不含任何板面） |
 
 ## 判读方法依据
 

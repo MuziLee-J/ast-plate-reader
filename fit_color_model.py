@@ -74,7 +74,7 @@ def main():
     if len(rows) < 20:
         print(f"有效复核孔太少（{len(rows)} 个），至少需要 ~20 个生长/无生长标注孔再拟合。")
         return
-    purple_growth = set()
+    purple_growth = set()   # 缺省视为无“紫色算生长”的药物；需要时用第 2 个参数指定模板
     if len(sys.argv) > 2:
         try:
             tpl = json.load(open(sys.argv[2], encoding="utf-8"))

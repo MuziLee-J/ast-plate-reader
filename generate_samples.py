@@ -2,7 +2,8 @@
 """生成模拟的 96 孔药敏板照片（含真实值 ground truth），用于演示和验证判读管线。
 
 用法:
-    uv run --with opencv-python --with numpy python generate_samples.py
+    uv run --with opencv-python --with numpy python generate_samples.py [模板.json]
+（缺省读取程序目录的 template.json；表格与对照孔都由模板决定，脚本不含任何板面内容）
 
 输出:
     samples/sample_01.jpg ~ sample_03.jpg  模拟照片（含透视、光照、噪声、JPEG 压缩）
@@ -10,6 +11,7 @@
 """
 import json
 import os
+import sys
 
 import cv2
 import numpy as np
@@ -27,15 +29,22 @@ WELL_D_MM = 6.9
 
 ROWS, COLS = 8, 12
 ROW_LETTERS = "ABCDEFGH"
-# 对照孔位置由模板决定   # 阳性对照 / 阴性对照
+# 对照孔位置从模板 detection 字段读取（positive_control / negative_control）
+TEMPLATE_PATH = os.path.join(HERE, "template.json")
 UNUSED_COLS = [11, 12]
 
 
-def load_template_concs():
-    """从 template.json 读取各药物列的浓度（A→H 从高到低），保证与判读管线一致。"""
-    with open(os.path.join(HERE, "template.json"), encoding="utf-8") as f:
+def load_template():
+    """读取模板：各列浓度（A→H 从高到低）与对照孔位置。"""
+    with open(TEMPLATE_PATH, encoding="utf-8") as f:
         t = json.load(f)
-    return {int(k): v["conc"] for k, v in t["drugs"].items()}
+    concs = {int(k): v["conc"] for k, v in t["drugs"].items()}
+    det = t.get("detection") or {}
+    pos = det.get("positive_control")
+    neg = det.get("negative_control")
+    if not pos or not neg:
+        raise SystemExit("模板缺少 detection.positive_control / negative_control，无法生成对照孔")
+    return concs, pos, neg
 
 
 def hsv_to_bgr(h, s, v):
@@ -54,13 +63,13 @@ def well_color(status, rng):
     return hsv_to_bgr(h, s, v)
 
 
-def make_truth(rng, concs, skip_col=None, overrides=None):
+def make_truth(rng, concs, pos_ctrl, neg_ctrl, skip_col=None, overrides=None):
     """生成真实值：每个药物列沿 A→H 先生长后不生长，MIC = 第一个无生长孔的浓度。"""
     overrides = overrides or {}
     wells, mic = {}, {}
     for col in sorted(concs):
         if col == skip_col:
-            growth_rows = [0, 1, 2, 4, 5]          # 跳跃孔异常：D 无生长、E/F 又有生长
+            growth_rows = [0, 1, 2, 4, 5]          # 跳跃孔异常：D 列无生长、E/F 列又有生长
         elif col in overrides:
             growth_rows = list(overrides[col])
         else:
@@ -75,15 +84,15 @@ def make_truth(rng, concs, skip_col=None, overrides=None):
             mic[str(col)] = {"display": mic_lower_label(c[-1]), "row": 0}
         else:
             mic[str(col)] = {"display": mic_label(c[first]), "row": first}
-    wells[POS_CONTROL] = "growth"
-    wells[NEG_CONTROL] = "no_growth"
+    wells[pos_ctrl] = "growth"
+    wells[neg_ctrl] = "no_growth"
     for col in UNUSED_COLS:
         for i in range(ROWS):
             pos = f"{ROW_LETTERS[i]}{col}"
             if pos not in wells:
                 wells[pos] = "unused"
     return {"wells": wells, "mic": mic,
-            "controls": {POS_CONTROL: "growth", NEG_CONTROL: "no_growth"}}
+            "controls": {pos_ctrl: "growth", neg_ctrl: "no_growth"}}
 
 
 def build_plate(truth, rng):
@@ -138,17 +147,21 @@ def compose_scene(plate, rng, lighting):
 
 
 def main():
+    global TEMPLATE_PATH
+    if len(sys.argv) > 1:
+        TEMPLATE_PATH = sys.argv[1]
     os.makedirs(OUT_DIR, exist_ok=True)
-    concs = load_template_concs()
+    concs, pos_ctrl, neg_ctrl = load_template()
     scenarios = [
         # (名称, 随机种子, 光照, 跳跃孔列, 覆盖的生长行)
-        ("sample_01", 1, {"r": 1.0,  "b": 1.0,  "blur": 0.6}, None, {1: list(range(8))}),  # 常规；（示例场景）
-        ("sample_02", 2, {"r": 1.10, "b": 0.88, "blur": 1.4}, None, {3: []}),              # 暖光略糊；（示例场景）
-        ("sample_03", 3, {"r": 0.92, "b": 1.08, "blur": 0.8}, 4, None),                    # 冷光；（示例场景）
+        ("sample_01", 1, {"r": 1.0,  "b": 1.0,  "blur": 0.6}, None, {1: list(range(8))}),  # 常规：第 1 列全生长（高浓度仍长）
+        ("sample_02", 2, {"r": 1.10, "b": 0.88, "blur": 1.4}, None, {3: []}),              # 暖光略糊：第 3 列全无生长
+        ("sample_03", 3, {"r": 0.92, "b": 1.08, "blur": 0.8}, 4, None),                    # 冷光：第 4 列跳跃孔异常
     ]
     for name, seed, lighting, skip_col, overrides in scenarios:
         rng = np.random.default_rng(seed)
-        truth = make_truth(rng, concs, skip_col=skip_col, overrides=overrides)
+        truth = make_truth(rng, concs, pos_ctrl, neg_ctrl,
+                           skip_col=skip_col, overrides=overrides)
         scene = compose_scene(build_plate(truth, rng), rng, lighting)
         img_path = os.path.join(OUT_DIR, f"{name}.jpg")
         cv2.imwrite(img_path, scene, [cv2.IMWRITE_JPEG_QUALITY, 88])
