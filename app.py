@@ -344,7 +344,7 @@ function qcBadge(m){
                 :'<span style="color:#c0392b;font-weight:bold">超出 '+m.qc_range+'</span>';
 }
 function micPosOf(mic){const p={};mic.forEach(m=>{if(m.mic_well)p[m.mic_well]=1;else if(m.mic_row)p[m.mic_row+m.col]=1;});return p;}
-function concNum(v){const m=String(v==null?'':v).match(/-?\d+(?:\.\d+)?/);return m?parseFloat(m[0]):null;}
+function concNum(v){const m=String(v==null?'':v).match(/-?[0-9]+(?:[.][0-9]+)?/);return m?parseFloat(m[0]):null;}
 function reviewValue(file,code,fallback){const k=_key(file,code);return (k in REVIEWS)?REVIEWS[k]:fallback;}
 function targetPosForValue(wmap,code,val){
   const ws=Object.values(wmap||{}).filter(w=>w&&w.drug===code&&w.conc!=null&&concNum(w.conc)!=null);
