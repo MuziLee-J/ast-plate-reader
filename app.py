@@ -27,7 +27,16 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 FROZEN = bool(getattr(sys, "frozen", False))          # PyInstaller 打包运行
 RES_DIR = getattr(sys, "_MEIPASS", HERE)              # 资源目录（模板/质控随包）
 DATA_DIR = os.path.dirname(sys.executable) if FROZEN else HERE  # 数据目录（原图/导出/用户模板）
-TEMPLATES = {"demo": load_template(os.path.join(RES_DIR, "template.json"))}
+_demo_path = os.path.join(RES_DIR, "template.json")
+if os.path.isfile(_demo_path):
+    TEMPLATES = {"demo": load_template(_demo_path)}
+else:   # 仓库不含板面内容：无演示模板时用空模板占位，避免启动失败
+    TEMPLATES = {"demo": {"name": "演示板", "panel_type": "microdilution_96",
+                          "grid": {"rows": 8, "cols": 12},
+                          "detection": {"mode": "color",
+                                        "positive_control": "H12",
+                                        "negative_control": "H11"},
+                          "drugs": {}, "units": "µg/mL"}}
 for _p in sorted(glob.glob(os.path.join(RES_DIR, "templates", "*.json"))):
     TEMPLATES[os.path.splitext(os.path.basename(_p))[0]] = load_template(_p)
 TPL_SAVE_DIR = os.path.join(DATA_DIR, "templates") if FROZEN else os.path.join(HERE, "templates")

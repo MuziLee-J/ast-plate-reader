@@ -11,3 +11,8 @@ dist/
 
 # 板面模板属内部资料，不入库
 templates/
+
+# 演示板模板 / 质控范围 / 样本照片均属内部资料，不入库
+template.json
+qc_rules.json
+samples/

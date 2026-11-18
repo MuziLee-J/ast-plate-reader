@@ -16,8 +16,8 @@
 板面内容（药物、浓度梯度、对照孔、判读规则）属于内部资料，**不随本仓库分发**。
 
 - 运行时把模板 JSON 放在程序目录的 `templates/` 下，或在网页里「上传模板」导入；
-- 模板格式可参考根目录的 `template.json`（演示板）；
-- 质控范围配置在 `qc_rules.json`。
+- 模板格式见程序内「下载模板 JSON」（随模板一起分发，仓库不含任何板面）；
+- 质控范围由实验室在程序目录放置 `qc_rules.json` 提供，仓库不含药物与浓度信息。
 
 ## 运行
 
@@ -43,10 +43,9 @@ uv run --with pyinstaller --with fastapi --with uvicorn --with opencv-python --w
 | `app.py` | Web 服务与单页前端 |
 | `ast_reader.py` | 判读管线（配准、取色、判读、MIC、导出） |
 | `chart_reader.py` | 仪器结果图（150 孔方格阵列）识别 |
-| `qc_rules.json` / `template.json` | 质控范围 / 演示板模板 |
 | `judge_plates.py` | 命令行批量判读 |
 | `evaluate_training.py` / `fit_color_model.py` | 复核数据评估 / 颜色阈值标定 |
-| `verify.py` / `generate_samples.py` | 合成样本与准确率自检 |
+| `verify.py` / `generate_samples.py` | 合成样本与准确率自检（需自备模板） |
 
 ## 判读方法依据
 
