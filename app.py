@@ -151,9 +151,11 @@ HTML_PAGE = """<!doctype html>
   select{padding:9px;border:1px solid #ddd;border-radius:8px;background:#fff;font-size:14px;box-sizing:border-box}
   .cond{background:#f8fafc;border-left:3px solid #2f6fed;padding:8px 10px;border-radius:4px;font-size:12px;color:#445;margin-top:8px}
   .board-panes{display:grid;grid-template-columns:minmax(320px,1.3fr) minmax(300px,1fr);gap:14px;align-items:start}
+  .plate .board-panes{grid-template-columns:minmax(240px,1.1fr) minmax(280px,1fr)}
   @media (max-width:900px){.board-panes{grid-template-columns:1fr}}
   svg.rings{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
   svg.rings text{font:700 15px/1 sans-serif;fill:#fff;paint-order:stroke;stroke:#1a7f37;stroke-width:3px}
+  svg.rings text.ctrlLab{font-size:13px;stroke:#b26a00;fill:#fff}
   #gridArea{max-height:none}
   .imgwrap{position:relative;display:block;width:100%}
   .imgwrap img{display:block;width:100%;border-radius:8px}
@@ -359,13 +361,25 @@ function targetPosForValue(wmap,code,val){
   ws.forEach(w=>{const d=Math.abs(concNum(w.conc)-v);if(d<bd){bd=d;best=w.pos;}});
   return best;
 }
-function reviewMicPos(file,wmap){
+function micListFor(file){
+  if(curBatch&&curBatch.plates){
+    const pl=curBatch.plates.find(x=>x.file===file);
+    if(pl&&pl.mic)return pl.mic;
+  }
+  return curMic||[];
+}
+function micLabels(file,wmap){
   const p={};
-  (curMic||[]).forEach(m=>{
+  micListFor(file).forEach(m=>{
     const val=reviewValue(file,m.code,m.mic);
     const t=wmap?targetPosForValue(wmap,m.code,val):null;
-    if(t)p[t]=1; else if(m.mic_well)p[m.mic_well]=1;
+    if(t)p[t]=m.code+'='+val; else if(m.mic_well)p[m.mic_well]=m.code+'='+val;
   });
+  return p;
+}
+function reviewMicPos(file,wmap){
+  const p={};
+  Object.keys(micLabels(file,wmap)).forEach(k=>{p[k]=1;});
   return p;
 }
 const RING_COLOR={growth:'#ff3c6e',no_growth:'#2864e6',partial:'#9b5cc6',unknown:'#9aa3ad',unused:'#c8ccd2'};
@@ -375,13 +389,17 @@ function drawRings(file,wmap,size,r,svgId){
   svg.setAttribute('viewBox','0 0 '+size[0]+' '+size[1]);
   svg.removeAttribute('preserveAspectRatio');
   const rr=r||Math.max(10,(size[0]||1200)/12*0.42);
-  const targets=reviewMicPos(file,wmap);
+  const targets=micLabels(file,wmap);
   let out='';
   Object.values(wmap).forEach(w=>{
     if(!w.xy)return;
-    const isT=!!targets[w.pos];
+    const lab=targets[w.pos];
+    const isT=!!lab;
     out+='<circle cx="'+w.xy[0]+'" cy="'+w.xy[1]+'" r="'+rr+'" fill="none" stroke="'+(isT?'#1a7f37':(RING_COLOR[w.status]||'#c8ccd2'))+'" stroke-width="'+(isT?6:4)+'"></circle>';
-    if(isT)out+='<text x="'+w.xy[0]+'" y="'+(w.xy[1]-rr-6)+'" text-anchor="middle">MIC</text>';
+    if(isT)out+='<text x="'+(w.xy[0]-rr)+'" y="'+(w.xy[1]-rr-6)+'" text-anchor="middle">'+esc(lab)+'</text>';
+    if(w.role==='positive_control'||w.role==='negative_control'){
+      out+='<text x="'+(w.xy[0]-rr)+'" y="'+(w.xy[1]+rr+18)+'" text-anchor="middle" class="ctrlLab">'+(w.role==='positive_control'?'阳':'阴')+'</text>';
+    }
   });
   svg.innerHTML=out;
 }
@@ -425,12 +443,12 @@ document.addEventListener('change',function(e){
     REVIEWS[k]=t.value;
     const orig=AUTO_MIC[k];
     t.classList.toggle('changed', orig!==undefined && String(t.value)!==String(orig));
-    if(curWells){refreshGrid();}
-    else if(curBatch){
-      const i=(curBatch.plates||[]).findIndex(p=>p.file===file);
+    if(curBatch&&curBatch.plates&&curBatch.plates.length){
+      const i=curBatch.plates.findIndex(p=>p.file===t.dataset.file);
       refreshBatchGrids(i>=0?i:0);
       redrawRings();
     }
+    else if(curWells){refreshGrid();}
     else{redrawRings();}
   }
 });
@@ -553,7 +571,7 @@ function render(data){
   $('boardIdle').style.display='none';
   $('boardView').style.display='block';
   $('boardCap').textContent='板面：原图 + 96 孔位标注'+(res.sample.time_point?(' · '+res.sample.time_point):'')+(res.sample.culture_info?(' · '+res.sample.culture_info):'');
-  $('boardImg').src='data:image/png;base64,'+data.image_b64;
+  $('boardImg').src='/api/orig/'+recordId+'/0';
   setHotspot($('boardHot'),curMeta.interactive?curWells:null,res.sample.size,res.sample.well_r_orig,wellClick);
   redrawRings();
   $('origLink').href='/api/orig/'+recordId+'/0';
@@ -640,7 +658,7 @@ function renderBatch(data){
   $('boardIdle').style.display='none';
   $('boardView').style.display='block';
   $('boardCap').textContent='板面：第 1 张照片（'+b.plates[0].sample.file+'）；各照片逐张展示在下方明细中';
-  $('boardImg').src='data:image/jpeg;base64,'+b.plates[0].image_b64;
+  $('boardImg').src='/api/orig/'+recordId+'/0';
   if(interactive){
     setHotspot($('boardHot'),curBatch.plates[0].wmap,b.plates[0].sample.size,
                b.plates[0].sample.well_r_orig,pos=>batchWellClick(0,pos));
@@ -663,21 +681,24 @@ function renderBatch(data){
     const ck=Object.entries(p.controls).map(([pos,v])=>pos+' '+v.role+'：'+(v.ok?'正常 ✓':'异常 ✗')).join('　');
     const warns=(p.warnings||[]).map(w=>'<div class="warn">⚠ '+w+'</div>').join('');
     const rows=micTableHtml(p.sample.file,p.mic);
-    let left='<div class="imgwrap"><img src="data:image/jpeg;base64,'+p.image_b64+'" alt="标注图"><svg class="rings" id="rings_'+i+'"></svg><svg class="hot" id="hot_'+i+'"></svg></div>'+
-             '<div class="hint" style="margin-top:4px">点击照片上的孔位即可复核；<a href="/api/orig/'+data.record_id+'/'+i+'" target="_blank" style="color:#2f6fed">查看原图 ↗</a></div>';
-    if(interactive){
-      const wmap={};(p.wells||[]).forEach(w=>{wmap[w.pos]=w;});
-      left+='<div class="gridwrap" style="margin-top:6px"><table class="grid" id="grid_'+i+'">'+buildGridHtml(wmap,reviewMicPos(p.file,wmap),i,curBatch&&curBatch.layout)+'</table></div>';
-    }
+    const photo='<div class="imgwrap"><img src="/api/orig/'+data.record_id+'/'+i+'" alt="板面照片"><svg class="rings" id="rings_'+i+'"></svg><svg class="hot" id="hot_'+i+'"></svg></div>'+
+      '<div class="hint" style="margin-top:6px">原图 + 孔位标注（绿圈 = MIC 判定孔）；点击孔位即可复核　<a href="/api/orig/'+data.record_id+'/'+i+'" target="_blank" style="color:#2f6fed">查看原图 ↗</a></div>';
+    const wmapP={};(p.wells||[]).forEach(w=>{wmapP[w.pos]=w;});
+    const head='<div class="hint" style="margin-bottom:4px">逐孔板面（第 '+(i+1)+' 张）'+(interactive?'：点击孔位循环切换 生长→抑制→临界':'（只读展示）')+'</div>';
+    const gridblock=head+'<div class="gridwrap"><table class="grid" id="grid_'+i+'">'+
+      buildGridHtml(wmapP,interactive?reviewMicPos(p.file,wmapP):{},interactive?i:undefined,curBatch&&curBatch.layout)+
+      '</table></div>';
     return '<details '+(i===0?'open':'')+' class="plate"><summary>照片 '+(i+1)+'：'+p.sample.file+
       ((p.warnings&&p.warnings.length)?'<span class="badge">'+p.warnings.length+' 条警告</span>':'<span class="badge">无警告</span>')+
-      '</summary><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:14px;align-items:start">'+
-      '<div>'+left+'</div>'+
-      '<div><div class="hint" id="ctrl_'+i+'">对照孔：'+ck+(p.sample.time_point?'　时间点：'+p.sample.time_point:'')+(p.sample.culture_info?'　培养：'+p.sample.culture_info:'')+'</div>'+
+      '</summary><div class="board-panes">'+
+      '<div>'+photo+'</div>'+
+      '<div>'+gridblock+'</div>'+
+      '</div>'+
+      '<div style="margin-top:10px"><div class="hint" id="ctrl_'+i+'">对照孔：'+ck+(p.sample.time_point?'　时间点：'+p.sample.time_point:'')+(p.sample.culture_info?'　培养：'+p.sample.culture_info:'')+'</div>'+
       '<div id="warns_'+i+'">'+warns+'</div>'+
       '<div style="margin:4px 0"><label style="font-size:13px"><input type="checkbox" class="revchk" data-file="'+p.sample.file+'"> 已人工复核</label></div>'+
       '<table><thead><tr><th>药物</th><th>名称</th><th>软件判读</th><th>人工复核</th><th>质控</th><th>备注</th></tr></thead><tbody id="micTb_'+i+'">'+rows+'</tbody></table></div>'+
-      '</div></details>';
+      '</details>';
   }).join('');
   if(interactive){
     b.plates.forEach((p,i)=>{
