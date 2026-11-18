@@ -44,7 +44,7 @@ def get_template(tid):
     return TEMPLATES.get(tid) or TEMPLATES["demo"]
 
 
-GENUS_NAMES = {"candida": "念珠菌属", "aspergillus": "曲霉属"}
+GENUS_NAMES = {"candida": "念珠菌属", "aspergillus": "曲霉属", "mould": "丝状真菌"}
 
 
 def build_meta(sample_no, culture_info, genus, species, batch_no, operator, strain2=""):
@@ -130,6 +130,7 @@ HTML_PAGE = """<!doctype html>
   .ctrl{outline:2px dashed #ff9800;outline-offset:-2px}
   .revsel.changed{border-color:#c07000;background:#fff6e0;font-weight:600}
   .recomp{color:#b26a00;font-size:12px;white-space:nowrap}
+  .mech{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:8px;background:#eef3fb;color:#3b6ab5;font-size:11px;white-space:nowrap}
   #boardImg{width:100%;border-radius:8px;margin-top:8px}
   .hint{color:#888;font-size:12px}
   .plate{border:1px solid #e3e6ec;border-radius:8px;padding:10px;margin:8px 0}
@@ -171,6 +172,7 @@ HTML_PAGE = """<!doctype html>
       <select id="genusSel">
         <option value="candida">菌属：念珠菌属</option>
         <option value="aspergillus">菌属：曲霉属</option>
+        <option value="mould">菌属：丝状真菌</option>
       </select>
       <input type="text" id="species" placeholder="菌种（如 克柔念珠菌）">
       <input type="text" id="cultureInfo" placeholder="培养信息（如 1640(Tris)）">
@@ -342,7 +344,8 @@ function micTableHtml(file,mic){
     const orig=autoMicOf(file,m);
     const recomp=String(orig)!==String(m.mic);
     const sw='<b>'+esc(orig)+'</b>'+(recomp?'<div class="recomp" title="逐孔复核后重算值，原始软件判读不覆盖">重算 '+esc(m.mic)+'</div>':'');
-    return '<tr><td>'+esc(m.code)+'</td><td>'+esc(m.name)+'</td><td>'+sw+'</td><td>'+revSelect(file,m)+'</td><td>'+qcBadge(m)+'</td>'+
+    const meth=m.method?'<span class="mech">'+esc(m.method)+'</span>':'';
+    return '<tr><td>'+esc(m.code)+'</td><td>'+esc(m.name)+meth+'</td><td>'+sw+'</td><td>'+revSelect(file,m)+'</td><td>'+qcBadge(m)+'</td>'+
     '<td><input type="text" class="remarkInp" data-file="'+esc(file)+'" data-code="'+esc(m.code)+'" value="'+esc(remarkValue(file,m))+'" placeholder="可填写备注" style="width:100%;min-width:180px;padding:4px 6px;border:1px solid #ddd;border-radius:6px;font-size:13px"></td></tr>';
   }).join('');
 }
@@ -633,17 +636,21 @@ async function uploadTemplate(el){
 function updateRuleBox(){
   const tid=$('templateSel').value||'demo';
   const info=TPL_INFO[tid]||{};
+  const g=$('genusSel').value||'candida';
   let t;
-  if(info.reading){
-    t=info.reading;
-  }else if(info.mode==='growth'){
-    t='无显色剂干板：按孔内生长（均匀浑浊或点状菌落）判读；生长量 ≥ 阳性对照 50% 计为生长（参考 CLSI M27 微量肉汤稀释法）；MIC = 最低无生长孔浓度；跳孔 1 个忽略、≥2 个无效。';
-    if(info.halves)t+='　B板上、下半区布局相同，可接种两个菌株——下半区菌号填上方输入框，导出时下排药物单独标注。';
+  if(info.mode==='growth'){
+    t = (g==='mould'||g==='aspergillus')
+      ? '干板·丝状真菌：按 WS/T 411 判读——两性霉素B、伊曲康唑、泊沙康唑、艾莎康唑、伏立康唑以 100% 抑制为终点；氟胞嘧啶、氟康唑以 50% 抑制为终点；阿尼芬净/卡泊芬净/米卡芬净判 MEC（菌落非融合生长的最低浓度）。阳性对照不生长时改用各药最低浓度孔作生长参照，并在结果中提示。'
+      : '干板·念珠菌：孔内均匀浑浊或点状菌落＝生长，生长量 ≥ 阳性对照 50% 计为生长（CLSI M27）；MIC＝最低无生长孔浓度；跳孔 1 个忽略、≥2 个无效。';
+    if(info.halves)t+='　B板上、下半区布局相同，可接种两个菌株。';
+  }else if(info.mode==='color'){
+    t = g==='mould'
+      ? '显色板·丝状真菌：两性霉素B、伊曲康唑、泊沙康唑、伏立康唑、艾莎康唑仅蓝色＝无生长（紫/粉/白均算生长）；氟胞嘧啶、米卡芬净、卡泊芬净、氟康唑蓝或紫＝无生长（参考 DL-96Fungus 说明书）。'
+      : (g==='aspergillus'
+        ? '显色板·曲霉属：康唑类（FLU/ISA/VRC/POS/ITR）紫色或粉色＝阳性（生长）；蓝色＝阴性（抑制）；其他药物粉红＝阳性，蓝/紫＝阴性。'
+        : '显色板·念珠菌属：粉红/红色＝阳性（生长），蓝色或紫色＝阴性（抑制）；两性霉素B 的紫色/粉色/红色均按阳性。');
   }else{
-    const g=$('genusSel').value;
-    t=g==='aspergillus'
-      ? '曲霉属：康唑类（FLU/ISA/VRC/POS/ITR）紫色或粉色＝阳性（生长）；蓝色＝阴性（抑制）；其他药物粉红＝阳性，蓝/紫＝阴性。'
-      : '念珠菌属：粉红/红色＝阳性（生长），蓝色或紫色＝阴性（抑制）；两性霉素B 的紫色/粉色/红色均按阳性。';
+    t = info.reading || '按模板规则判读。';
   }
   $('ruleBox').textContent='当前判读条件：'+t;
 }
