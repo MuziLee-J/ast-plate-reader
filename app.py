@@ -141,6 +141,10 @@ HTML_PAGE = """<!doctype html>
   .dragging .board-idle{border-color:#2f6fed;background:#f0f5ff}
   select{padding:9px;border:1px solid #ddd;border-radius:8px;background:#fff;font-size:14px;box-sizing:border-box}
   .cond{background:#f8fafc;border-left:3px solid #2f6fed;padding:8px 10px;border-radius:4px;font-size:12px;color:#445;margin-top:8px}
+  .board-panes{display:grid;grid-template-columns:minmax(320px,1.3fr) minmax(300px,1fr);gap:14px;align-items:start}
+  @media (max-width:900px){.board-panes{grid-template-columns:1fr}}
+  svg.rings{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
+  svg.rings text{font:700 15px/1 sans-serif;fill:#fff;paint-order:stroke;stroke:#1a7f37;stroke-width:3px}
   #gridArea{max-height:none}
   .imgwrap{position:relative;display:block;width:100%}
   .imgwrap img{display:block;width:100%;border-radius:8px}
@@ -199,9 +203,9 @@ HTML_PAGE = """<!doctype html>
     <p class="hint" style="margin:0">也可以把照片直接拖到这个区域</p>
   </div>
   <div id="boardView" style="display:none">
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:14px;align-items:start">
+    <div class="board-panes">
       <div>
-        <div class="imgwrap"><img id="boardImg" alt="板面（原图 + 孔位标注）"><svg id="boardHot" class="hot"></svg></div>
+        <div class="imgwrap"><img id="boardImg" alt="板面（原图 + 孔位标注）"><svg id="boardRings" class="rings"></svg><svg id="boardHot" class="hot"></svg></div>
         <div class="hint" style="margin-top:6px">原图 + 孔位标注（绿圈 = MIC 判定孔）；<b>直接点击照片上的孔位可复核修改 MIC</b>　<a id="origLink" href="#" target="_blank" style="color:#2f6fed">查看原图 ↗</a></div>
       </div>
       <div>
@@ -331,6 +335,62 @@ function qcBadge(m){
                 :'<span style="color:#c0392b;font-weight:bold">超出 '+m.qc_range+'</span>';
 }
 function micPosOf(mic){const p={};mic.forEach(m=>{if(m.mic_well)p[m.mic_well]=1;else if(m.mic_row)p[m.mic_row+m.col]=1;});return p;}
+function concNum(v){const m=String(v==null?'':v).match(/-?\d+(?:\.\d+)?/);return m?parseFloat(m[0]):null;}
+function reviewValue(file,code,fallback){const k=_key(file,code);return (k in REVIEWS)?REVIEWS[k]:fallback;}
+function targetPosForValue(wmap,code,val){
+  const ws=Object.values(wmap||{}).filter(w=>w&&w.drug===code&&w.conc!=null&&concNum(w.conc)!=null);
+  if(!ws.length)return null;
+  const hi=ws.reduce((a,b)=>concNum(a.conc)>=concNum(b.conc)?a:b);
+  const lo=ws.reduce((a,b)=>concNum(a.conc)<=concNum(b.conc)?a:b);
+  const t=String(val==null?'':val);
+  if(/^[≥>]/.test(t))return hi.pos;
+  if(/^[≤<]/.test(t))return lo.pos;
+  const v=concNum(t); if(v==null)return null;
+  let best=null,bd=Infinity;
+  ws.forEach(w=>{const d=Math.abs(concNum(w.conc)-v);if(d<bd){bd=d;best=w.pos;}});
+  return best;
+}
+function reviewMicPos(file,wmap){
+  const p={};
+  (curMic||[]).forEach(m=>{
+    const val=reviewValue(file,m.code,m.mic);
+    const t=wmap?targetPosForValue(wmap,m.code,val):null;
+    if(t)p[t]=1; else if(m.mic_well)p[m.mic_well]=1;
+  });
+  return p;
+}
+const RING_COLOR={growth:'#ff3c6e',no_growth:'#2864e6',partial:'#9b5cc6',unknown:'#9aa3ad',unused:'#c8ccd2'};
+function drawRings(file,wmap,size,r,svgId){
+  const svg=$(svgId||'boardRings'); if(!svg)return;
+  if(!wmap||!size){svg.innerHTML='';return;}
+  svg.setAttribute('viewBox','0 0 '+size[0]+' '+size[1]);
+  svg.removeAttribute('preserveAspectRatio');
+  const rr=r||Math.max(10,(size[0]||1200)/12*0.42);
+  const targets=reviewMicPos(file,wmap);
+  let out='';
+  Object.values(wmap).forEach(w=>{
+    if(!w.xy)return;
+    const isT=!!targets[w.pos];
+    out+='<circle cx="'+w.xy[0]+'" cy="'+w.xy[1]+'" r="'+rr+'" fill="none" stroke="'+(isT?'#1a7f37':(RING_COLOR[w.status]||'#c8ccd2'))+'" stroke-width="'+(isT?6:4)+'"></circle>';
+    if(isT)out+='<text x="'+w.xy[0]+'" y="'+(w.xy[1]-rr-6)+'" text-anchor="middle">MIC</text>';
+  });
+  svg.innerHTML=out;
+}
+function redrawRings(){
+  if(curBatch&&curBatch.plates&&curBatch.plates.length){
+    curBatch.plates.forEach((pl,i)=>{
+      drawRings(pl.file,pl.wmap,pl.sample&&pl.sample.size,pl.sample&&pl.sample.well_r_orig,'rings_'+i);
+    });
+    const pl0=curBatch.plates[0];
+    drawRings(pl0.file,pl0.wmap,pl0.sample&&pl0.sample.size,pl0.sample&&pl0.sample.well_r_orig);
+  }else if(curMeta&&curMeta.file&&curWells){
+    const si=curMeta.sampleInfo||{};
+    drawRings(curMeta.file,curWells,si.size,si.well_r_orig);
+  }else{
+    const svg=$('boardRings'); if(svg)svg.innerHTML='';
+    document.querySelectorAll('svg.rings[id^=rings_]').forEach(sv=>{sv.innerHTML='';});
+  }
+}
 let REMARKS={};
 function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function autoNote(m){return (m.flags&&m.flags.length)?m.flags.join('；'):(m.note||'');}
@@ -356,6 +416,13 @@ document.addEventListener('change',function(e){
     REVIEWS[k]=t.value;
     const orig=AUTO_MIC[k];
     t.classList.toggle('changed', orig!==undefined && String(t.value)!==String(orig));
+    if(curWells){refreshGrid();}
+    else if(curBatch){
+      const i=(curBatch.plates||[]).findIndex(p=>p.file===file);
+      refreshBatchGrids(i>=0?i:0);
+      redrawRings();
+    }
+    else{redrawRings();}
   }
 });
 document.addEventListener('input',function(e){
@@ -413,7 +480,7 @@ function setHotspot(svgEl,wmap,size,shapeR,clickFn){
     c.addEventListener('click',()=>clickFn(c.dataset.pos));
   });
 }
-function refreshGrid(){if(!curWells)return;$('grid').innerHTML=buildGridHtml(curWells,micPosOf(curMic||[]),undefined,curMeta&&curMeta.layout);bindWellClicks();}
+function refreshGrid(){if(!curWells)return;$('grid').innerHTML=buildGridHtml(curWells,reviewMicPos(curMeta&&curMeta.file,curWells),undefined,curMeta&&curMeta.layout);bindWellClicks();redrawRings();}
 function bindWellClicks(){
   const inter=!!(curMeta&&curMeta.interactive);
   document.querySelectorAll('#grid td[data-pos]').forEach(td=>{
@@ -427,6 +494,7 @@ function wellClick(pos){
   const seq=['growth','no_growth','partial'];
   w.status=seq[((seq.indexOf(w.status)+1)%3+3)%3];
   refreshGrid();
+  redrawRings();
   clearTimeout(recomputeTimer);
   recomputeTimer=setTimeout(doRecompute,250);
 }
@@ -448,6 +516,7 @@ async function doRecompute(){
     $('ctrl').innerHTML='<div class="hint">'+ctrlLine(d.controls,curMeta.sampleInfo)+'　（已按逐孔复核重算）</div>';
     $('warns').innerHTML=(d.warnings||[]).map(w=>'<div class="warn">⚠ '+w+'</div>').join('');
     refreshGrid();
+    redrawRings();
   }catch(e){}
 }
 function render(data){
@@ -469,7 +538,7 @@ function render(data){
            time_point:$('timePoint').value||'',
            file:res.sample.file,
            sampleInfo:res.sample};
-  $('grid').innerHTML=buildGridHtml(curWells,micPosOf(res.mic),undefined,res.layout);
+  $('grid').innerHTML=buildGridHtml(curWells,reviewMicPos(res.sample.file,curWells),undefined,res.layout);
   bindWellClicks();
   $('gridHint').textContent=curMeta.interactive?'逐孔板面：点击任意孔位循环切换 生长→抑制→临界，MIC 与质控会自动重算':'逐孔板面（当前板型只读展示）';
   $('boardIdle').style.display='none';
@@ -477,6 +546,7 @@ function render(data){
   $('boardCap').textContent='板面：原图 + 96 孔位标注'+(res.sample.time_point?(' · '+res.sample.time_point):'')+(res.sample.culture_info?(' · '+res.sample.culture_info):'');
   $('boardImg').src='data:image/png;base64,'+data.image_b64;
   setHotspot($('boardHot'),curMeta.interactive?curWells:null,res.sample.size,res.sample.well_r_orig,wellClick);
+  redrawRings();
   $('origLink').href='/api/orig/'+recordId+'/0';
 }
 function batchCtrlText(p){
@@ -485,7 +555,7 @@ function batchCtrlText(p){
 }
 function batchGridHtml(i){
   const p=curBatch.plates[i];
-  return buildGridHtml(p.wmap,micPosOf(p.mic),i,curBatch&&curBatch.layout);
+  return buildGridHtml(p.wmap,reviewMicPos(p.file,p.wmap),i,curBatch&&curBatch.layout);
 }
 function refreshBatchGrids(i){
   if(i===0)$('grid').innerHTML=batchGridHtml(0);
@@ -571,6 +641,7 @@ function renderBatch(data){
   $('origLink').href='/api/orig/'+recordId+'/0';
   if(interactive){
     $('grid').innerHTML=batchGridHtml(0);
+    redrawRings();
     $('gridHint').textContent='逐孔板面（第 1 张照片）：点击任意孔位循环切换 生长→抑制→临界，该照片 MIC 与下方合并结果自动重算';
   }else{
     const wmap0={}; (b.plates[0].wells||[]).forEach(w=>{wmap0[w.pos]=w;});
@@ -583,11 +654,11 @@ function renderBatch(data){
     const ck=Object.entries(p.controls).map(([pos,v])=>pos+' '+v.role+'：'+(v.ok?'正常 ✓':'异常 ✗')).join('　');
     const warns=(p.warnings||[]).map(w=>'<div class="warn">⚠ '+w+'</div>').join('');
     const rows=micTableHtml(p.sample.file,p.mic);
-    let left='<div class="imgwrap"><img src="data:image/jpeg;base64,'+p.image_b64+'" alt="标注图"><svg class="hot" id="hot_'+i+'"></svg></div>'+
+    let left='<div class="imgwrap"><img src="data:image/jpeg;base64,'+p.image_b64+'" alt="标注图"><svg class="rings" id="rings_'+i+'"></svg><svg class="hot" id="hot_'+i+'"></svg></div>'+
              '<div class="hint" style="margin-top:4px">点击照片上的孔位即可复核；<a href="/api/orig/'+data.record_id+'/'+i+'" target="_blank" style="color:#2f6fed">查看原图 ↗</a></div>';
     if(interactive){
       const wmap={};(p.wells||[]).forEach(w=>{wmap[w.pos]=w;});
-      left+='<div class="gridwrap" style="margin-top:6px"><table class="grid" id="grid_'+i+'">'+buildGridHtml(wmap,micPosOf(p.mic),i,curBatch&&curBatch.layout)+'</table></div>';
+      left+='<div class="gridwrap" style="margin-top:6px"><table class="grid" id="grid_'+i+'">'+buildGridHtml(wmap,reviewMicPos(p.file,wmap),i,curBatch&&curBatch.layout)+'</table></div>';
     }
     return '<details '+(i===0?'open':'')+' class="plate"><summary>照片 '+(i+1)+'：'+p.sample.file+
       ((p.warnings&&p.warnings.length)?'<span class="badge">'+p.warnings.length+' 条警告</span>':'<span class="badge">无警告</span>')+
@@ -605,6 +676,7 @@ function renderBatch(data){
                  p.sample.size,p.sample.well_r_orig,pos=>batchWellClick(i,pos));
     });
   }
+  redrawRings();
 }
 function pushSession(rec){sessionRecords.unshift(rec);renderSession();}
 function renderSession(){
