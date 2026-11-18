@@ -354,7 +354,7 @@ function targetPosForValue(wmap,code,val){
   const hi=ws.reduce((a,b)=>concNum(a.conc)>=concNum(b.conc)?a:b);
   const lo=ws.reduce((a,b)=>concNum(a.conc)<=concNum(b.conc)?a:b);
   const t=String(val==null?'':val);
-  if(/^[≥>]/.test(t))return hi.pos;
+  if(/^[≥>]/.test(t))return null;   // 超过最高浓度：整列都长，没有“MIC 孔”
   if(/^[≤<]/.test(t))return lo.pos;
   const v=concNum(t); if(v==null)return null;
   let best=null,bd=Infinity;
@@ -372,10 +372,26 @@ function micLabels(file,wmap){
   const p={};
   micListFor(file).forEach(m=>{
     const val=reviewValue(file,m.code,m.mic);
+    if(/^[≥>]/.test(String(val==null?'':val)))return;   // 超上限：不画单孔 MIC 圈
     const t=wmap?targetPosForValue(wmap,m.code,val):null;
     if(t)p[t]=m.code+'='+val; else if(m.mic_well)p[m.mic_well]=m.code+'='+val;
   });
   return p;
+}
+// 超过最高浓度（≥xxx）的药物：整列孔都算生长，全部着红圈，文字标在最高浓度孔
+function micAbove(file,wmap){
+  const out={};
+  micListFor(file).forEach(m=>{
+    const val=reviewValue(file,m.code,m.mic);
+    if(!/^[≥>]/.test(String(val==null?'':val)))return;
+    let hi=null;
+    Object.values(wmap||{}).forEach(w=>{
+      if(!w||w.drug!==m.code||concNum(w.conc)==null)return;
+      if(!hi||concNum(w.conc)>concNum(hi.conc))hi=w;
+    });
+    out[m.code]={val:val,hi:hi?hi.pos:null};
+  });
+  return out;
 }
 function reviewMicPos(file,wmap){
   const p={};
@@ -390,13 +406,17 @@ function drawRings(file,wmap,size,r,svgId){
   svg.removeAttribute('preserveAspectRatio');
   const rr=r||Math.max(10,(size[0]||1200)/12*0.42);
   const targets=micLabels(file,wmap);
+  const above=micAbove(file,wmap);
   let out='';
   Object.values(wmap).forEach(w=>{
     if(!w.xy)return;
     const lab=targets[w.pos];
     const isT=!!lab;
-    out+='<circle cx="'+w.xy[0]+'" cy="'+w.xy[1]+'" r="'+rr+'" fill="none" stroke="'+(isT?'#1a7f37':(RING_COLOR[w.status]||'#c8ccd2'))+'" stroke-width="'+(isT?6:4)+'"></circle>';
+    const ab=above[w.drug];
+    const color=ab?RING_COLOR.growth:(isT?'#1a7f37':(RING_COLOR[w.status]||'#c8ccd2'));
+    out+='<circle cx="'+w.xy[0]+'" cy="'+w.xy[1]+'" r="'+rr+'" fill="none" stroke="'+color+'" stroke-width="'+((isT||ab)?6:4)+'"></circle>';
     if(isT)out+='<text x="'+(w.xy[0]-rr)+'" y="'+(w.xy[1]-rr-6)+'" text-anchor="middle">'+esc(lab)+'</text>';
+    if(ab&&ab.hi===w.pos)out+='<text x="'+(w.xy[0]-rr)+'" y="'+(w.xy[1]-rr-6)+'" text-anchor="middle">'+esc(w.drug+'='+ab.val)+'</text>';
     if(w.role==='positive_control'||w.role==='negative_control'){
       out+='<text x="'+(w.xy[0]-rr)+'" y="'+(w.xy[1]+rr+18)+'" text-anchor="middle" class="ctrlLab">'+(w.role==='positive_control'?'阳':'阴')+'</text>';
     }
