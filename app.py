@@ -378,7 +378,7 @@ function micLabels(file,wmap){
   });
   return p;
 }
-// 超过最高浓度（≥xxx）的药物：整列孔都算生长，全部着红圈，文字标在最高浓度孔
+// 超过最高浓度（≥xxx）的药物：整列孔都算生长，圆圈颜色跟随孔状态，文字标在最高浓度孔
 function micAbove(file,wmap){
   const out={};
   micListFor(file).forEach(m=>{
@@ -413,7 +413,8 @@ function drawRings(file,wmap,size,r,svgId){
     const lab=targets[w.pos];
     const isT=!!lab;
     const ab=above[w.drug];
-    const color=ab?RING_COLOR.growth:(isT?'#1a7f37':(RING_COLOR[w.status]||'#c8ccd2'));
+    // MIC 判定孔保持原样式（绿色实心圈）；其余孔（含 ≥ 药物孔）圆圈颜色跟随阴(蓝)/阳(红)/临界(紫)状态
+    const color=isT?'#1a7f37':(RING_COLOR[w.status]||'#c8ccd2');
     out+='<circle cx="'+w.xy[0]+'" cy="'+w.xy[1]+'" r="'+rr+'" fill="none" stroke="'+color+'" stroke-width="'+((isT||ab)?6:4)+'"></circle>';
     if(isT)out+='<text x="'+(w.xy[0]-rr)+'" y="'+(w.xy[1]-rr-6)+'" text-anchor="middle">'+esc(lab)+'</text>';
     if(ab&&ab.hi===w.pos)out+='<text x="'+(w.xy[0]-rr)+'" y="'+(w.xy[1]-rr-6)+'" text-anchor="middle">'+esc(w.drug+'='+ab.val)+'</text>';
@@ -623,6 +624,7 @@ function batchWellClick(i,pos){
   const seq=['growth','no_growth','partial'];
   w.status=seq[((seq.indexOf(w.status)+1)%3+3)%3];
   refreshBatchGrids(i);
+  redrawRings();
   clearTimeout(batchTimer);
   batchTimer=setTimeout(doRecomputeBatch,250);
 }
@@ -655,6 +657,7 @@ async function doRecomputeBatch(){
       if(dt)dt.textContent=p.warnings.length?p.warnings.length+' 条警告':'无警告';
       refreshBatchGrids(i);
     });
+    redrawRings();
   }catch(e){}
 }
 function renderBatch(data){
