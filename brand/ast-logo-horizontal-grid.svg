@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1900 560" width="1900" height="560" role="img" aria-label="AST Plate Reader">
+<g transform="translate(8,70) scale(0.410156)">
+<defs>
+<linearGradient id="bgL" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0A171C"/><stop offset="1" stop-color="#14323C"/></linearGradient>
+<filter id="shL" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="20" stdDeviation="22" flood-color="#000" flood-opacity=".5"/></filter>
+</defs>
+<rect width="1024" height="1024" rx="232" fill="url(#bgL)"/>
+<rect x="88" y="210" width="848" height="604" rx="62" fill="#E2ECF0" filter="url(#shL)"/>
+<rect x="106" y="228" width="812" height="568" rx="46" fill="#FCFEFF"/>
+<circle cx="221.5" cy="346.0" r="27.4" fill="#FFFFFF" stroke="#B0C6CE" stroke-width="6"/>
+<circle cx="304.5" cy="346.0" r="27.4" fill="#FFFFFF" stroke="#B0C6CE" stroke-width="6"/>
+<circle cx="387.5" cy="346.0" r="27.4" fill="#FFFFFF" stroke="#B0C6CE" stroke-width="6"/>
+<circle cx="470.5" cy="346.0" r="27.4" fill="#FFFFFF" stroke="#B0C6CE" stroke-width="6"/>
+<circle cx="553.5" cy="346.0" r="27.4" fill="#F0B0C2"/>
+<circle cx="636.5" cy="346.0" r="27.4" fill="#E26F8E"/>
+<circle cx="719.5" cy="346.0" r="27.4" fill="#C4335B"/>
+<circle cx="802.5" cy="346.0" r="27.4" fill="#92103A"/>
+<circle cx="221.5" cy="429.0" r="27.4" fill="#FFFFFF" stroke="#B0C6CE" stroke-width="6"/>
+<circle cx="304.5" cy="429.0" r="27.4" fill="#FFFFFF" stroke="#B0C6CE" stroke-width="6"/>
+<circle cx="387.5" cy="429.0" r="27.4" fill="#FFFFFF" stroke="#B0C6CE" stroke-width="6"/>
+<circle cx="470.5" cy="429.0" r="27.4" fill="#FFFFFF" stroke="#B0C6CE" stroke-width="6"/>
+<circle cx="553.5" cy="429.0" r="27.4" fill="#F0B0C2"/>
+<circle cx="636.5" cy="429.0" r="27.4" fill="#E26F8E"/>
+<circle cx="719.5" cy="429.0" r="27.4" fill="#C4335B"/>
+<circle cx="802.5" cy="429.0" r="27.4" fill="#92103A"/>
+<circle cx="221.5" cy="512.0" r="27.4" fill="#FFFFFF" stroke="#B0C6CE" stroke-width="6"/>
+<circle cx="304.5" cy="512.0" r="27.4" fill="#FFFFFF" stroke="#B0C6CE" stroke-width="6"/>
+<circle cx="387.5" cy="512.0" r="27.4" fill="#FFFFFF" stroke="#B0C6CE" stroke-width="6"/>
+<circle cx="470.5" cy="512.0" r="27.4" fill="#FFFFFF" stroke="#B0C6CE" stroke-width="6"/>
+<circle cx="553.5" cy="512.0" r="27.4" fill="#F0B0C2"/>
+<circle cx="636.5" cy="512.0" r="27.4" fill="#E26F8E"/>
+<circle cx="719.5" cy="512.0" r="27.4" fill="#C4335B"/>
+<circle cx="802.5" cy="512.0" r="27.4" fill="#92103A"/>
+<circle cx="221.5" cy="595.0" r="27.4" fill="#FFFFFF" stroke="#B0C6CE" stroke-width="6"/>
+<circle cx="304.5" cy="595.0" r="27.4" fill="#FFFFFF" stroke="#B0C6CE" stroke-width="6"/>
+<circle cx="387.5" cy="595.0" r="27.4" fill="#FFFFFF" stroke="#B0C6CE" stroke-width="6"/>
+<circle cx="470.5" cy="595.0" r="27.4" fill="#FFFFFF" stroke="#B0C6CE" stroke-width="6"/>
+<circle cx="553.5" cy="595.0" r="27.4" fill="#F0B0C2"/>
+<circle cx="636.5" cy="595.0" r="27.4" fill="#E26F8E"/>
+<circle cx="719.5" cy="595.0" r="27.4" fill="#C4335B"/>
+<circle cx="802.5" cy="595.0" r="27.4" fill="#92103A"/>
+<circle cx="221.5" cy="678.0" r="27.4" fill="#FFFFFF" stroke="#B0C6CE" stroke-width="6"/>
+<circle cx="304.5" cy="678.0" r="27.4" fill="#FFFFFF" stroke="#B0C6CE" stroke-width="6"/>
+<circle cx="387.5" cy="678.0" r="27.4" fill="#FFFFFF" stroke="#B0C6CE" stroke-width="6"/>
+<circle cx="470.5" cy="678.0" r="27.4" fill="#FFFFFF" stroke="#B0C6CE" stroke-width="6"/>
+<circle cx="553.5" cy="678.0" r="27.4" fill="#F0B0C2"/>
+<circle cx="636.5" cy="678.0" r="27.4" fill="#E26F8E"/>
+<circle cx="719.5" cy="678.0" r="27.4" fill="#C4335B"/>
+<circle cx="802.5" cy="678.0" r="27.4" fill="#92103A"/>
+<circle cx="470.5" cy="346.0" r="40.0" fill="none" stroke="#1A7F37" stroke-width="7.4"/>
+<circle cx="470.5" cy="429.0" r="40.0" fill="none" stroke="#1A7F37" stroke-width="7.4"/>
+<circle cx="470.5" cy="512.0" r="40.0" fill="none" stroke="#1A7F37" stroke-width="7.4"/>
+<circle cx="470.5" cy="595.0" r="40.0" fill="none" stroke="#1A7F37" stroke-width="7.4"/>
+<circle cx="470.5" cy="678.0" r="40.0" fill="none" stroke="#1A7F37" stroke-width="7.4"/>
+</g>
+<rect x="512" y="132" width="5" height="168" rx="3" fill="#1A7F37"/>
+<text x="556" y="296" font-family="Bahnschrift, Segoe UI Semibold, Segoe UI, Arial, sans-serif" font-size="224" font-weight="700" letter-spacing="6" fill="#0B1E25">AST</text>
+<text x="560" y="392" font-family="Segoe UI Semibold, Segoe UI, Arial, sans-serif" font-size="48" letter-spacing="10" fill="#5C737B">PLATE READER</text>
+<text x="560" y="448" font-family="Microsoft YaHei, PingFang SC, sans-serif" font-size="34" letter-spacing="2" fill="#90A2A9">药敏板智能判读系统</text>
+</svg>

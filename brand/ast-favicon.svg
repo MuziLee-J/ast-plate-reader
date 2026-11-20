@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+<defs><linearGradient id="fb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0A171C"/><stop offset="1" stop-color="#14323C"/></linearGradient></defs>
+<rect width="64" height="64" rx="15" fill="url(#fb)"/>
+<rect x="8" y="17" width="48" height="30" rx="6.5" fill="#FCFEFF" stroke="#E2ECF0" stroke-width="1.6"/>
+<circle cx="13.0" cy="32" r="3.1" fill="#B0C6CE"/>
+<circle cx="22.0" cy="32" r="5.4" fill="none" stroke="#1A7F37" stroke-width="2.4"/>
+<circle cx="22.0" cy="32" r="3.1" fill="#FCFEFF" stroke="#B0C6CE" stroke-width="1.4"/>
+<circle cx="31.0" cy="32" r="3.1" fill="#EE8FA9"/>
+<circle cx="40.0" cy="32" r="3.1" fill="#C43A66"/>
+<circle cx="49.0" cy="32" r="3.1" fill="#920E3A"/>
+</svg>
